@@ -3,7 +3,6 @@ package com.flowna.musicplayer.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +42,7 @@ import androidx.navigation.compose.rememberNavController
 import com.flowna.musicplayer.data.repository.LibraryRepository
 import com.flowna.musicplayer.player.PlayerViewModel
 import com.flowna.musicplayer.ui.components.BottomPlayerBar
+import com.flowna.musicplayer.ui.components.PreviewPlayerBar
 import com.flowna.musicplayer.ui.screens.DownloadsScreen
 import com.flowna.musicplayer.ui.screens.LibraryScreen
 import com.flowna.musicplayer.ui.screens.PlayerScreen
@@ -77,6 +77,7 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val updateInfo by AppUpdateState.info.collectAsStateWithLifecycle()
+    val previewState by playerViewModel.previewState.collectAsStateWithLifecycle()
     var showUpdateDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -99,10 +100,15 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    BottomPlayerBar(
-                        playerViewModel = playerViewModel,
-                        onOpenPlayer = { navController.navigate(FlownaScreen.Player.route) }
-                    )
+                    if (previewState.isVisible) {
+                        PreviewPlayerBar(playerViewModel = playerViewModel)
+                    } else {
+                        BottomPlayerBar(
+                            playerViewModel = playerViewModel,
+                            onOpenPlayer = { navController.navigate(FlownaScreen.Player.route) }
+                        )
+                    }
+
                     FlownaBottomNavigation(
                         currentRoute = currentRoute,
                         onSelect = { screen ->
@@ -127,7 +133,7 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
             modifier = Modifier.padding(padding)
         ) {
             composable(FlownaScreen.Search.route) {
-                SearchScreen()
+                SearchScreen(playerViewModel = playerViewModel)
             }
             composable(FlownaScreen.Downloads.route) {
                 DownloadsScreen(

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -37,19 +38,21 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,11 +72,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.flowna.musicplayer.data.FlownaSong
 import com.flowna.musicplayer.player.PlayerViewModel
 import com.flowna.musicplayer.ui.components.FlownaCircleIconButton
-import com.flowna.musicplayer.ui.components.FlownaEqualizerDecoration
-import com.flowna.musicplayer.ui.components.FlownaGradientBackground
 import com.flowna.musicplayer.ui.components.FlownaPanel
+import com.flowna.musicplayer.ui.components.ReactiveWaveform
 import com.flowna.musicplayer.ui.components.SongArtwork
-import com.flowna.musicplayer.util.PreferencesHelper
+import com.flowna.musicplayer.util.ArtworkPalette
+import com.flowna.musicplayer.util.ArtworkPaletteResolver
 import kotlin.math.roundToInt
 
 @Composable
@@ -87,16 +90,34 @@ fun PlayerScreen(
     val progress by playerViewModel.progress.collectAsStateWithLifecycle()
     val currentPositionMs by playerViewModel.currentPositionMs.collectAsStateWithLifecycle()
     val durationMs by playerViewModel.durationMs.collectAsStateWithLifecycle()
+    val audioSessionId by playerViewModel.audioSessionId.collectAsStateWithLifecycle()
     val density = LocalDensity.current
     val maxPullPx = with(density) { 220.dp.toPx() }
     val dismissThresholdPx = with(density) { 120.dp.toPx() }
     var showPlayerMenu by remember { mutableStateOf(false) }
     var artworkOffsetTarget by remember { mutableFloatStateOf(0f) }
     var isFavorite by remember(currentSong?.uri?.toString()) {
-        mutableStateOf(
-            currentSong?.uri?.toString()?.let(PreferencesHelper::isFavoriteSong) == true
-        )
+        mutableStateOf(false)
     }
+    val palette by produceState(
+        initialValue = ArtworkPalette.Default,
+        key1 = currentSong?.uri?.toString()
+    ) {
+        value = ArtworkPaletteResolver.resolve(context, currentSong)
+    }
+
+    DisposableEffect(Unit) {
+        playerViewModel.setPlaybackUiVisible(true)
+        onDispose { playerViewModel.setPlaybackUiVisible(false) }
+    }
+
+    DisposableEffect(currentSong?.uri?.toString()) {
+        isFavorite = currentSong?.uri?.toString()?.let { uri ->
+            com.flowna.musicplayer.util.PreferencesHelper.isFavoriteSong(uri)
+        } == true
+        onDispose { }
+    }
+
     val animatedArtworkOffset by animateFloatAsState(
         targetValue = artworkOffsetTarget,
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 320f),
@@ -113,7 +134,33 @@ fun PlayerScreen(
         }
     }
 
-    FlownaGradientBackground(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        palette.backgroundStart,
+                        palette.backgroundEnd,
+                        MaterialTheme.colorScheme.background
+                    )
+                )
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            palette.glow,
+                            Color.Transparent
+                        ),
+                        radius = with(density) { 280.dp.toPx() }
+                    )
+                )
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -138,8 +185,12 @@ fun PlayerScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    FlownaEqualizerDecoration(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)
+                    ReactiveWaveform(
+                        audioSessionId = audioSessionId,
+                        isActive = isPlaying,
+                        accent = palette.accent,
+                        glow = palette.glow,
+                        modifier = Modifier.width(94.dp)
                     )
                 }
                 Box {
@@ -163,8 +214,8 @@ fun PlayerScreen(
                             text = { Text(if (isFavorite) "Favoriden kaldır" else "Favorilere ekle") },
                             onClick = {
                                 showPlayerMenu = false
-                                currentSong?.uri?.toString()?.let { songUri ->
-                                    isFavorite = PreferencesHelper.toggleFavoriteSong(songUri)
+                                currentSong?.let { song ->
+                                    isFavorite = playerViewModel.toggleFavorite(song)
                                 }
                             }
                         )
@@ -203,8 +254,8 @@ fun PlayerScreen(
                         }
                     ),
                 shape = RoundedCornerShape(34.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+                border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.25f)),
                 shadowElevation = 24.dp
             ) {
                 Box(
@@ -213,8 +264,9 @@ fun PlayerScreen(
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                                    Color.Transparent
+                                    palette.glow.copy(alpha = 0.42f),
+                                    Color.Transparent,
+                                    Color(0x59000000)
                                 )
                             )
                         )
@@ -224,24 +276,38 @@ fun PlayerScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 22.dp)
+                    ) {
+                        ReactiveWaveform(
+                            audioSessionId = audioSessionId,
+                            isActive = isPlaying,
+                            accent = palette.accent,
+                            glow = palette.glow
+                        )
+                    }
+
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(18.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
                     ) {
                         IconButton(
                             onClick = {
-                                currentSong?.uri?.toString()?.let { songUri ->
-                                    isFavorite = PreferencesHelper.toggleFavoriteSong(songUri)
+                                currentSong?.let { song ->
+                                    isFavorite = playerViewModel.toggleFavorite(song)
                                 }
                             }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.FavoriteBorder,
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = if (isFavorite) "Favoriden kaldır" else "Favorilere ekle",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = palette.accent
                             )
                         }
                     }
@@ -268,7 +334,7 @@ fun PlayerScreen(
                         text = listOfNotNull(
                             currentSong?.artist?.takeIf { it.isNotBlank() },
                             currentSong?.album?.takeIf { it.isNotBlank() }
-                        ).joinToString(" • ").ifBlank { "Bilinmeyen Sanatçı" },
+                        ).joinToString(" • ").ifBlank { "Bilinmeyen sanatçı" },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -276,14 +342,14 @@ fun PlayerScreen(
                     )
                 }
                 FlownaCircleIconButton(
-                    icon = Icons.Default.FavoriteBorder,
+                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = if (isFavorite) "Favoriden kaldır" else "Favorilere ekle",
                     onClick = {
-                        currentSong?.uri?.toString()?.let { songUri ->
-                            isFavorite = PreferencesHelper.toggleFavoriteSong(songUri)
+                        currentSong?.let { song ->
+                            isFavorite = playerViewModel.toggleFavorite(song)
                         }
                     },
-                    accent = isFavorite
+                    accent = true
                 )
             }
 
@@ -294,8 +360,8 @@ fun PlayerScreen(
                 onValueChange = { playerViewModel.seekTo(it) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    thumbColor = palette.accent,
+                    activeTrackColor = palette.accent,
                     inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
@@ -329,11 +395,11 @@ fun PlayerScreen(
                     onClick = { playerViewModel.addCurrentSongToQueue() }
                 )
                 PlayerShortcut(
-                    icon = Icons.Default.FavoriteBorder,
-                    label = if (isFavorite) "Favoriden Çıkar" else "Favorilere Ekle",
+                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    label = if (isFavorite) "Favori" else "Favorilere Ekle",
                     onClick = {
-                        currentSong?.uri?.toString()?.let { songUri ->
-                            isFavorite = PreferencesHelper.toggleFavoriteSong(songUri)
+                        currentSong?.let { song ->
+                            isFavorite = playerViewModel.toggleFavorite(song)
                         }
                     }
                 )
@@ -364,7 +430,7 @@ fun PlayerScreen(
                 Surface(
                     modifier = Modifier.size(104.dp),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = palette.accent,
                     shadowElevation = 20.dp
                 ) {
                     IconButton(onClick = { playerViewModel.togglePlayPause() }) {
@@ -426,7 +492,7 @@ private fun PlayerShortcut(
     ) {
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
         ) {
             IconButton(onClick = onClick) {
                 Icon(
@@ -453,7 +519,7 @@ private fun PlayerTransportButton(
 ) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f)
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
     ) {
         IconButton(onClick = onClick) {
             Icon(
@@ -487,7 +553,8 @@ private fun PlayerInfoBlock(
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
         trailingIcon?.let {

@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.flowna.musicplayer.data.repository.SearchRepository
 import com.flowna.musicplayer.data.repository.SearchResult
+import com.flowna.musicplayer.player.PlayerViewModel
 import com.flowna.musicplayer.service.DownloadService
 import com.flowna.musicplayer.ui.components.FlownaGradientBackground
 import com.flowna.musicplayer.ui.components.FlownaPanel
@@ -69,7 +71,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen() {
+fun SearchScreen(playerViewModel: PlayerViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -81,7 +83,7 @@ fun SearchScreen() {
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var recentQueries by rememberSaveable {
         mutableStateOf(
-            listOf("Zeynep Bastik", "Sezen Aksu", "Sagopa Kajmer", "Mabel Matiz", "Mor ve Otesi")
+            listOf("Zeynep Bastık", "Sezen Aksu", "Sagopa Kajmer", "Mabel Matiz", "Mor ve Ötesi")
         )
     }
     var isLoading by remember { mutableStateOf(false) }
@@ -103,15 +105,14 @@ fun SearchScreen() {
         suggestions.clear()
 
         scope.launch {
-            val result = SearchRepository.search(trimmedQuery)
-            result.onSuccess { items ->
-                results = items
-            }.onFailure {
-                results = emptyList()
-                snackbarHostState.showSnackbar(
-                    "Arama basarisiz oldu. Baglantini kontrol edip tekrar dene."
-                )
-            }
+            SearchRepository.search(trimmedQuery)
+                .onSuccess { results = it }
+                .onFailure {
+                    results = emptyList()
+                    snackbarHostState.showSnackbar(
+                        "Arama başarısız oldu. Bağlantını kontrol edip tekrar dene."
+                    )
+                }
             isLoading = false
         }
     }
@@ -127,9 +128,9 @@ fun SearchScreen() {
         delay(300)
         isLoadingSuggestions = true
         SearchRepository.suggestions(trimmedQuery)
-            .onSuccess { items ->
+            .onSuccess {
                 suggestions.clear()
-                suggestions.addAll(items)
+                suggestions.addAll(it)
             }
             .onFailure {
                 suggestions.clear()
@@ -138,7 +139,7 @@ fun SearchScreen() {
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         FlownaGradientBackground(
@@ -154,7 +155,7 @@ fun SearchScreen() {
             ) {
                 FlownaSectionHeading(
                     title = "Ara",
-                    subtitle = "Sarki, sanatci veya album kesfet."
+                    subtitle = "Şarkı, sanatçı veya albüm keşfet."
                 )
 
                 Spacer(modifier = Modifier.height(18.dp))
@@ -171,7 +172,7 @@ fun SearchScreen() {
                     },
                     placeholder = {
                         Text(
-                            text = "Sarki, sanatci veya album ara...",
+                            text = "Şarkı, sanatçı veya albüm ara...",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     },
@@ -179,9 +180,7 @@ fun SearchScreen() {
                     textStyle = MaterialTheme.typography.bodyLarge,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = { performSearch() }
-                    ),
+                    keyboardActions = KeyboardActions(onSearch = { performSearch() }),
                     trailingIcon = {
                         if (isLoadingSuggestions) {
                             CircularProgressIndicator(
@@ -201,9 +200,9 @@ fun SearchScreen() {
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
                         cursorColor = MaterialTheme.colorScheme.primary,
                         focusedTextColor = MaterialTheme.colorScheme.onSurface,
                         unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -216,7 +215,7 @@ fun SearchScreen() {
                     Spacer(modifier = Modifier.height(10.dp))
                     SuggestionPanel(
                         suggestions = suggestions,
-                        onSuggestionClick = { suggestion -> performSearch(suggestion) }
+                        onSuggestionClick = { performSearch(it) }
                     )
                 }
 
@@ -251,7 +250,7 @@ fun SearchScreen() {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Sonuc bulunamadi",
+                                text = "Sonuç bulunamadı",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -270,6 +269,16 @@ fun SearchScreen() {
                             items(results, key = { it.videoUrl }) { result ->
                                 SearchResultItem(
                                     result = result,
+                                    onPreview = {
+                                        scope.launch {
+                                            playerViewModel.startPreview(result)
+                                                .onFailure {
+                                                    snackbarHostState.showSnackbar(
+                                                        it.message ?: "Önizleme başlatılamadı."
+                                                    )
+                                                }
+                                        }
+                                    },
                                     onDownload = {
                                         val startResult = DownloadService.start(
                                             context = context,
@@ -280,11 +289,11 @@ fun SearchScreen() {
                                         scope.launch {
                                             startResult.onSuccess {
                                                 snackbarHostState.showSnackbar(
-                                                    "Indirme basladi. Durumu Indirmeler ekranindan takip edebilirsin."
+                                                    "İndirme başladı. Durumu İndirmeler ekranından takip edebilirsin."
                                                 )
                                             }.onFailure {
                                                 snackbarHostState.showSnackbar(
-                                                    "Indirme servisi baslatilamadi: ${it.message ?: "Bilinmeyen hata"}"
+                                                    "İndirme servisi başlatılamadı: ${it.message ?: "Bilinmeyen hata"}"
                                                 )
                                             }
                                         }
@@ -314,6 +323,21 @@ private fun SearchDiscoveryBody(
         contentPadding = PaddingValues(bottom = 120.dp)
     ) {
         item {
+            FlownaPanel(verticalSpacing = 8.dp) {
+                Text(
+                    text = "Hızlı başlangıç",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Kapak görseline dokunarak şarkıyı indirmeden önce önizlemede dinleyebilirsin.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -326,7 +350,7 @@ private fun SearchDiscoveryBody(
                 )
                 if (recentQueries.isNotEmpty()) {
                     Text(
-                        text = "Tumunu temizle",
+                        text = "Tümünü temizle",
                         modifier = Modifier.clickable(onClick = onClearRecent),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
@@ -357,12 +381,12 @@ private fun SearchDiscoveryBody(
             item {
                 FlownaPanel(verticalSpacing = 8.dp) {
                     Text(
-                        text = "Henuz arama gecmisi yok.",
+                        text = "Henüz arama geçmişi yok.",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Yukaridan sarki, sanatci veya album yazarak aramaya baslayabilirsin.",
+                        text = "Yukarıdan şarkı, sanatçı veya albüm yazarak aramaya başlayabilirsin.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -433,21 +457,42 @@ private fun SearchChip(
 @Composable
 private fun SearchResultItem(
     result: SearchResult,
+    onPreview: () -> Unit,
     onDownload: () -> Unit
 ) {
-    FlownaPanel(verticalSpacing = 12.dp) {
+    FlownaPanel(verticalSpacing = 14.dp) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                model = result.thumbnailUrl,
-                contentDescription = result.title,
+            Box(
                 modifier = Modifier
-                    .size(86.dp)
-                    .clip(RoundedCornerShape(18.dp)),
-                contentScale = ContentScale.Crop
-            )
+                    .size(90.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .clickable(onClick = onPreview)
+            ) {
+                AsyncImage(
+                    model = result.thumbnailUrl,
+                    contentDescription = result.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Önizle",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.width(14.dp))
 
@@ -461,7 +506,7 @@ private fun SearchResultItem(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = result.uploaderName.ifBlank { "Bilinmeyen sanatci" },
+                    text = result.uploaderName.ifBlank { "Bilinmeyen sanatçı" },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -471,25 +516,46 @@ private fun SearchResultItem(
                 Text(
                     text = formatDuration(result.duration),
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
 
-        FilledTonalButton(
-            onClick = onDownload,
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Download,
-                contentDescription = "Indir"
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Indir",
-                fontWeight = FontWeight.SemiBold
-            )
+            FilledTonalButton(
+                onClick = onPreview,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Önizle"
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Önizle",
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            FilledTonalButton(
+                onClick = onDownload,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "İndir"
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "İndir",
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }

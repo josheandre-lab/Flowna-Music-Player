@@ -2,6 +2,8 @@ package com.flowna.musicplayer.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -21,12 +23,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,9 +47,9 @@ fun FlownaGradientBackground(
         modifier = modifier.background(
             Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFF0A0712),
+                    Color(0xFFF9F3FD),
                     MaterialTheme.colorScheme.background,
-                    Color(0xFF0B0814)
+                    Color(0xFFF5F0FA)
                 )
             )
         )
@@ -55,7 +60,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                             Color.Transparent
                         ),
                         center = Offset(220f, 120f),
@@ -69,7 +74,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
                             Color.Transparent
                         ),
                         center = Offset(940f, 1500f),
@@ -90,9 +95,9 @@ fun FlownaPanel(
     Surface(
         modifier = modifier,
         shape = FlownaPanelShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 16.dp,
+        shadowElevation = 10.dp,
         tonalElevation = 0.dp
     ) {
         Column(
@@ -102,7 +107,7 @@ fun FlownaPanel(
                     Brush.verticalGradient(
                         colors = listOf(
                             MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.84f)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)
                         )
                     )
                 )
@@ -153,6 +158,8 @@ fun FlownaCircleIconButton(
     modifier: Modifier = Modifier,
     accent: Boolean = false
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     Surface(
         modifier = modifier,
         shape = CircleShape,
@@ -166,7 +173,16 @@ fun FlownaCircleIconButton(
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .clickable(onClick = onClick),
+                .graphicsLayer {
+                    val scale = if (pressed) 0.94f else 1f
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -189,6 +205,8 @@ fun FlownaSegmentedTabs(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(26.dp),
@@ -205,6 +223,11 @@ fun FlownaSegmentedTabs(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .graphicsLayer {
+                            val scale = if (pressed && selected) 0.98f else 1f
+                            scaleX = scale
+                            scaleY = scale
+                        }
                         .clip(RoundedCornerShape(22.dp))
                         .background(
                             if (selected) {
@@ -220,7 +243,10 @@ fun FlownaSegmentedTabs(
                                 )
                             }
                         )
-                        .clickable { onSelect(index) }
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null
+                        ) { onSelect(index) }
                         .padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center
                 ) {

@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import com.flowna.musicplayer.player.PreviewTrack
 import java.util.LinkedHashSet
 
 data class SearchResult(
@@ -78,6 +79,55 @@ object SearchRepository {
                 .filter { it.isNotBlank() }
 
             Result.success(LinkedHashSet(suggestionList).take(6))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun resolvePreviewTrack(result: SearchResult): Result<PreviewTrack> {
+        return resolvePreviewTrack(
+            title = result.title,
+            artist = result.uploaderName,
+            thumbnailUrl = result.thumbnailUrl,
+            durationSeconds = result.duration,
+            videoId = result.videoId,
+            videoUrl = result.videoUrl
+        )
+    }
+
+    suspend fun resolvePreviewTrack(
+        title: String,
+        artist: String,
+        thumbnailUrl: String,
+        durationSeconds: Long,
+        videoId: String,
+        videoUrl: String
+    ): Result<PreviewTrack> = withContext(Dispatchers.IO) {
+        try {
+            ensureInitialized()
+
+            val extractor = ServiceList.YouTube.getStreamExtractor(normalizeVideoUrl(videoUrl, videoId))
+            extractor.fetchPage()
+
+            val audioStream = extractor.audioStreams
+                .filter { it.url?.isNotBlank() == true }
+                .maxByOrNull { maxOf(it.averageBitrate, it.bitrate) }
+
+            val streamUrl = audioStream?.url?.takeIf { it.isNotBlank() }
+                ?: extractor.hlsUrl?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Onizleme akisi bulunamadi.")
+
+            Result.success(
+                PreviewTrack(
+                    videoId = videoId.ifBlank { extractVideoId(videoUrl) },
+                    title = TextNormalizer.normalizeHumanText(title) ?: title,
+                    artist = TextNormalizer.normalizeHumanText(artist) ?: artist,
+                    artworkUrl = extractor.thumbnails.firstOrNull()?.url ?: thumbnailUrl,
+                    streamUrl = streamUrl,
+                    videoUrl = normalizeVideoUrl(videoUrl, videoId),
+                    durationSeconds = extractor.length.takeIf { it > 0 } ?: durationSeconds
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }

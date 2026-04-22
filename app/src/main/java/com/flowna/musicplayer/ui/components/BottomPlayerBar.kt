@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,11 @@ fun BottomPlayerBar(
     val progress by playerViewModel.progress.collectAsStateWithLifecycle()
 
     currentSong?.let { song ->
+        DisposableEffect(Unit) {
+            playerViewModel.setPlaybackUiVisible(true)
+            onDispose { playerViewModel.setPlaybackUiVisible(false) }
+        }
+
         FlownaPanel(
             modifier = modifier
                 .fillMaxWidth()

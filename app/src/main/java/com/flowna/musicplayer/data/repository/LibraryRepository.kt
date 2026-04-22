@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.util.Base64
 import com.flowna.musicplayer.data.FlownaSong
+import com.flowna.musicplayer.data.recommendation.RecommendationEngine
+import com.flowna.musicplayer.data.recommendation.RecommendationItem
 import com.flowna.musicplayer.util.MediaStoreHelper
 import com.flowna.musicplayer.util.PermissionHelper
 import com.flowna.musicplayer.util.PreferencesHelper
@@ -21,6 +23,9 @@ import java.io.File
 
 data class LibraryState(
     val songs: List<FlownaSong> = emptyList(),
+    val recommendedItems: List<RecommendationItem> = emptyList(),
+    val mostPlayedSongs: List<FlownaSong> = emptyList(),
+    val recentlyPlayedSongs: List<FlownaSong> = emptyList(),
     val isInitialized: Boolean = false,
     val isRefreshing: Boolean = false,
     val lastScanAt: Long? = null,
@@ -59,8 +64,9 @@ object LibraryRepository {
 
         if (!hasCacheFile || !PreferencesHelper.hasCompletedInitialLibraryScan()) {
             refreshLibrary(appContext)
-        } else if (!_state.value.isInitialized) {
+        } else {
             _state.update { it.copy(isInitialized = true) }
+            refreshDerivedState(appContext, _state.value.songs, allowOnline = false)
         }
     }
 
@@ -72,28 +78,29 @@ object LibraryRepository {
             return@withContext Result.failure(SecurityException("Kütüphane izni gerekli."))
         }
 
-        repositoryMutex.withLock {
+        var refreshedSongs: List<FlownaSong>? = null
+        val result = repositoryMutex.withLock {
             _state.update { it.copy(isRefreshing = true, errorMessage = null) }
 
             runCatching {
-                val refreshedSongs = MediaStoreHelper.querySongs(appContext)
+                refreshedSongs = MediaStoreHelper.querySongs(appContext)
                 val scannedAt = System.currentTimeMillis()
 
                 writeCache(
                     context = appContext,
-                    songs = refreshedSongs,
+                    songs = refreshedSongs.orEmpty(),
                     scannedAt = scannedAt
                 )
 
                 PreferencesHelper.markLibraryScanCompleted(scannedAt)
-                _state.value = LibraryState(
-                    songs = refreshedSongs,
+                _state.value = _state.value.copy(
+                    songs = refreshedSongs.orEmpty(),
                     isInitialized = true,
                     isRefreshing = false,
                     lastScanAt = scannedAt,
                     errorMessage = null
                 )
-                refreshedSongs.size
+                refreshedSongs.orEmpty().size
             }.onFailure { error ->
                 _state.update {
                     it.copy(
@@ -104,19 +111,30 @@ object LibraryRepository {
                 }
             }
         }
+
+        refreshedSongs?.let { refreshDerivedState(appContext, it, allowOnline = false) }
+        result
+    }
+
+    suspend fun refreshRecommendations(
+        context: Context,
+        allowOnline: Boolean = true
+    ) = withContext(Dispatchers.IO) {
+        refreshDerivedState(context.applicationContext, _state.value.songs, allowOnline)
     }
 
     suspend fun addOrUpdateFromUri(context: Context, uri: Uri): Result<FlownaSong> = withContext(Dispatchers.IO) {
         val appContext = context.applicationContext
         loadCacheIfNeeded(appContext)
 
-        repositoryMutex.withLock {
+        var mergedSongs: List<FlownaSong>? = null
+        val result = repositoryMutex.withLock {
             runCatching {
                 val song = MediaStoreHelper.querySongByUri(appContext, uri)
                     ?: error("Yeni şarkı kütüphane önbelleğine eklenemedi.")
 
                 val currentState = _state.value
-                val mergedSongs = buildList {
+                mergedSongs = buildList {
                     add(song)
                     addAll(
                         currentState.songs.filterNot { cachedSong ->
@@ -128,7 +146,7 @@ object LibraryRepository {
                 val scannedAt = currentState.lastScanAt ?: System.currentTimeMillis()
                 writeCache(
                     context = appContext,
-                    songs = mergedSongs,
+                    songs = mergedSongs.orEmpty(),
                     scannedAt = scannedAt
                 )
 
@@ -137,13 +155,52 @@ object LibraryRepository {
                 }
 
                 _state.value = currentState.copy(
-                    songs = mergedSongs,
+                    songs = mergedSongs.orEmpty(),
                     isInitialized = true,
                     errorMessage = null,
                     lastScanAt = scannedAt
                 )
                 song
             }
+        }
+
+        mergedSongs?.let { refreshDerivedState(appContext, it, allowOnline = false) }
+        result
+    }
+
+    private suspend fun refreshDerivedState(
+        context: Context,
+        songs: List<FlownaSong>,
+        allowOnline: Boolean
+    ) {
+        if (songs.isEmpty()) {
+            _state.update {
+                it.copy(
+                    recommendedItems = emptyList(),
+                    mostPlayedSongs = emptyList(),
+                    recentlyPlayedSongs = emptyList()
+                )
+            }
+            return
+        }
+
+        ListeningInsightsRepository.syncLibrarySongs(context, songs)
+        val insights = ListeningInsightsRepository.getAllTrackInsights(context)
+        val recommendations = RecommendationEngine.buildRecommendations(
+            context = context,
+            songs = songs,
+            insights = insights,
+            includeOnline = allowOnline
+        )
+        val mostPlayedSongs = RecommendationEngine.buildMostPlayedSongs(songs, insights)
+        val recentSongs = RecommendationEngine.buildRecentSongs(songs, insights)
+
+        _state.update {
+            it.copy(
+                recommendedItems = recommendations,
+                mostPlayedSongs = mostPlayedSongs,
+                recentlyPlayedSongs = recentSongs
+            )
         }
     }
 
