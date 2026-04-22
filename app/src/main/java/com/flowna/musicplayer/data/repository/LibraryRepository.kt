@@ -1,0 +1,258 @@
+package com.flowna.musicplayer.data.repository
+
+import android.content.Context
+import android.net.Uri
+import android.util.Base64
+import com.flowna.musicplayer.data.FlownaSong
+import com.flowna.musicplayer.util.MediaStoreHelper
+import com.flowna.musicplayer.util.PermissionHelper
+import com.flowna.musicplayer.util.PreferencesHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+
+data class LibraryState(
+    val songs: List<FlownaSong> = emptyList(),
+    val isInitialized: Boolean = false,
+    val isRefreshing: Boolean = false,
+    val lastScanAt: Long? = null,
+    val errorMessage: String? = null
+)
+
+object LibraryRepository {
+
+    private const val CACHE_FILE_NAME = "flowna_library_cache_v2.json"
+    private val repositoryMutex = Mutex()
+    private val _state = MutableStateFlow(
+        LibraryState(
+            lastScanAt = PreferencesHelper.getLastLibraryScanAt().takeIf { it > 0L }
+        )
+    )
+    val state: StateFlow<LibraryState> = _state.asStateFlow()
+
+    @Volatile
+    private var cacheLoaded = false
+
+    @Volatile
+    private var hasCacheFile = false
+
+    suspend fun ensureInitialized(context: Context) {
+        val appContext = context.applicationContext
+        loadCacheIfNeeded(appContext)
+
+        if (!PermissionHelper.hasAllPermissions(appContext)) {
+            _state.update {
+                it.copy(
+                    isInitialized = hasCacheFile || PreferencesHelper.hasCompletedInitialLibraryScan()
+                )
+            }
+            return
+        }
+
+        if (!hasCacheFile || !PreferencesHelper.hasCompletedInitialLibraryScan()) {
+            refreshLibrary(appContext)
+        } else if (!_state.value.isInitialized) {
+            _state.update { it.copy(isInitialized = true) }
+        }
+    }
+
+    suspend fun refreshLibrary(context: Context): Result<Int> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        loadCacheIfNeeded(appContext)
+
+        if (!PermissionHelper.hasAllPermissions(appContext)) {
+            return@withContext Result.failure(SecurityException("Kütüphane izni gerekli."))
+        }
+
+        repositoryMutex.withLock {
+            _state.update { it.copy(isRefreshing = true, errorMessage = null) }
+
+            runCatching {
+                val refreshedSongs = MediaStoreHelper.querySongs(appContext)
+                val scannedAt = System.currentTimeMillis()
+
+                writeCache(
+                    context = appContext,
+                    songs = refreshedSongs,
+                    scannedAt = scannedAt
+                )
+
+                PreferencesHelper.markLibraryScanCompleted(scannedAt)
+                _state.value = LibraryState(
+                    songs = refreshedSongs,
+                    isInitialized = true,
+                    isRefreshing = false,
+                    lastScanAt = scannedAt,
+                    errorMessage = null
+                )
+                refreshedSongs.size
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        isInitialized = it.isInitialized || hasCacheFile,
+                        isRefreshing = false,
+                        errorMessage = error.message ?: "Kütüphane taraması başarısız oldu."
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun addOrUpdateFromUri(context: Context, uri: Uri): Result<FlownaSong> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        loadCacheIfNeeded(appContext)
+
+        repositoryMutex.withLock {
+            runCatching {
+                val song = MediaStoreHelper.querySongByUri(appContext, uri)
+                    ?: error("Yeni şarkı kütüphane önbelleğine eklenemedi.")
+
+                val currentState = _state.value
+                val mergedSongs = buildList {
+                    add(song)
+                    addAll(
+                        currentState.songs.filterNot { cachedSong ->
+                            cachedSong.id == song.id || cachedSong.uri.toString() == song.uri.toString()
+                        }
+                    )
+                }
+
+                val scannedAt = currentState.lastScanAt ?: System.currentTimeMillis()
+                writeCache(
+                    context = appContext,
+                    songs = mergedSongs,
+                    scannedAt = scannedAt
+                )
+
+                if (!PreferencesHelper.hasCompletedInitialLibraryScan()) {
+                    PreferencesHelper.markLibraryScanCompleted(scannedAt)
+                }
+
+                _state.value = currentState.copy(
+                    songs = mergedSongs,
+                    isInitialized = true,
+                    errorMessage = null,
+                    lastScanAt = scannedAt
+                )
+                song
+            }
+        }
+    }
+
+    private suspend fun loadCacheIfNeeded(context: Context) {
+        if (cacheLoaded) return
+
+        repositoryMutex.withLock {
+            if (cacheLoaded) return
+
+            val cacheFile = cacheFile(context)
+            hasCacheFile = cacheFile.exists()
+
+            val cachedState = runCatching {
+                if (!hasCacheFile) {
+                    LibraryState(
+                        isInitialized = PreferencesHelper.hasCompletedInitialLibraryScan(),
+                        lastScanAt = PreferencesHelper.getLastLibraryScanAt().takeIf { it > 0L }
+                    )
+                } else {
+                    readCache(cacheFile)
+                }
+            }.getOrElse {
+                hasCacheFile = false
+                LibraryState(
+                    isInitialized = false,
+                    lastScanAt = PreferencesHelper.getLastLibraryScanAt().takeIf { it > 0L },
+                    errorMessage = "Kütüphane önbellek dosyası okunamadı."
+                )
+            }
+
+            _state.value = cachedState
+            cacheLoaded = true
+        }
+    }
+
+    private fun readCache(cacheFile: File): LibraryState {
+        val root = JSONObject(cacheFile.readText())
+        val songs = root.optJSONArray("songs")?.toSongs().orEmpty()
+        val lastScanAt = root.optLong("lastScanAt").takeIf { it > 0L }
+
+        return LibraryState(
+            songs = songs,
+            isInitialized = true,
+            isRefreshing = false,
+            lastScanAt = lastScanAt ?: PreferencesHelper.getLastLibraryScanAt().takeIf { it > 0L },
+            errorMessage = null
+        )
+    }
+
+    private fun writeCache(
+        context: Context,
+        songs: List<FlownaSong>,
+        scannedAt: Long
+    ) {
+        val payload = JSONObject()
+            .put("lastScanAt", scannedAt)
+            .put("songs", JSONArray().apply {
+                songs.forEach { put(it.toJson()) }
+            })
+
+        cacheFile(context).writeText(payload.toString())
+        hasCacheFile = true
+    }
+
+    private fun cacheFile(context: Context): File {
+        return File(context.filesDir, CACHE_FILE_NAME)
+    }
+
+    private fun JSONArray.toSongs(): List<FlownaSong> {
+        return buildList(length()) {
+            for (index in 0 until length()) {
+                val songObject = optJSONObject(index) ?: continue
+                val uri = songObject.optString("uri").takeIf { it.isNotBlank() } ?: continue
+                add(
+                    FlownaSong(
+                        id = songObject.optLong("id"),
+                        title = songObject.optString("title").ifBlank { "Bilinmeyen" },
+                        artist = songObject.optString("artist").ifBlank { "Bilinmeyen Sanatçı" },
+                        album = songObject.optString("album"),
+                        duration = songObject.optLong("duration"),
+                        uri = Uri.parse(uri),
+                        albumArtUri = songObject.optString("albumArtUri")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(Uri::parse),
+                        embeddedArtwork = songObject.optString("embeddedArtwork")
+                            .takeIf { it.isNotBlank() }
+                            ?.let { Base64.decode(it, Base64.DEFAULT) },
+                        isFlownaDownload = songObject.optBoolean("isFlownaDownload", false)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun FlownaSong.toJson(): JSONObject {
+        return JSONObject()
+            .put("id", id)
+            .put("title", title)
+            .put("artist", artist)
+            .put("album", album)
+            .put("duration", duration)
+            .put("uri", uri.toString())
+            .put("albumArtUri", albumArtUri?.toString().orEmpty())
+            .put("embeddedArtwork", cacheableArtwork())
+            .put("isFlownaDownload", isFlownaDownload)
+    }
+
+    private fun FlownaSong.cacheableArtwork(): String {
+        val artwork = embeddedArtwork ?: return ""
+        return Base64.encodeToString(artwork, Base64.NO_WRAP)
+    }
+}

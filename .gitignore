@@ -1,0 +1,39 @@
+# Gradle / build outputs
+.gradle/
+.kotlin/
+build/
+**/build/
+tmp_release_101/
+
+# Local machine config
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# App packages
+*.apk
+*.aab
+output-metadata.json
+
+# Logs / profiling
+*.log
+*.hprof
+
+# Secrets / signing
+*.jks
+*.keystore
+keystore.properties
+google-services.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local backup artifacts
+backups/*.zip
+backups/*.patch
