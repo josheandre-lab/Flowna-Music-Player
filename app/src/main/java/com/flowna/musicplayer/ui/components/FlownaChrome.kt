@@ -36,7 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-private val FlownaPanelShape = RoundedCornerShape(30.dp)
+private val FlownaPanelShape = RoundedCornerShape(28.dp)
 
 @Composable
 fun FlownaGradientBackground(
@@ -47,9 +47,9 @@ fun FlownaGradientBackground(
         modifier = modifier.background(
             Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFFF9F3FD),
+                    Color(0xFFF8F5FA),
                     MaterialTheme.colorScheme.background,
-                    Color(0xFFF5F0FA)
+                    Color(0xFFF1EDF6)
                 )
             )
         )
@@ -60,11 +60,11 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                             Color.Transparent
                         ),
-                        center = Offset(220f, 120f),
-                        radius = 760f
+                        center = Offset(180f, 140f),
+                        radius = 680f
                     )
                 )
         )
@@ -74,11 +74,25 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.09f),
                             Color.Transparent
                         ),
-                        center = Offset(940f, 1500f),
-                        radius = 980f
+                        center = Offset(920f, 1380f),
+                        radius = 880f
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.72f),
+                            Color.Transparent
+                        ),
+                        center = Offset(520f, 240f),
+                        radius = 540f
                     )
                 )
         )
@@ -95,19 +109,19 @@ fun FlownaPanel(
     Surface(
         modifier = modifier,
         shape = FlownaPanelShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 10.dp,
+        shadowElevation = 14.dp,
         tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.verticalGradient(
+                    Brush.linearGradient(
                         colors = listOf(
                             MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
                         )
                     )
                 )
@@ -136,6 +150,14 @@ fun FlownaSectionHeading(
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
+            )
+            Box(
+                modifier = Modifier
+                    .padding(top = 8.dp, bottom = 2.dp)
+                    .width(54.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
             )
             Text(
                 text = subtitle,
@@ -166,13 +188,13 @@ fun FlownaCircleIconButton(
         color = if (accent) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
+            MaterialTheme.colorScheme.surface
         },
-        shadowElevation = if (accent) 14.dp else 8.dp
+        shadowElevation = if (accent) 14.dp else 12.dp
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(52.dp)
                 .graphicsLayer {
                     val scale = if (pressed) 0.94f else 1f
                     scaleX = scale
@@ -205,26 +227,27 @@ fun FlownaSegmentedTabs(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        shadowElevation = 8.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(4.dp),
+                .padding(5.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items.forEachIndexed { index, item ->
                 val selected = index == selectedIndex
+                val interactionSource = remember { MutableInteractionSource() }
+                val itemPressed by interactionSource.collectIsPressedAsState()
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .graphicsLayer {
-                            val scale = if (pressed && selected) 0.98f else 1f
+                            val scale = if (itemPressed && selected) 0.98f else 1f
                             scaleX = scale
                             scaleY = scale
                         }
@@ -247,7 +270,7 @@ fun FlownaSegmentedTabs(
                             interactionSource = interactionSource,
                             indication = null
                         ) { onSelect(index) }
-                        .padding(vertical = 13.dp),
+                        .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -288,7 +311,7 @@ fun FlownaStatusBadge(
         color = containerColor
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

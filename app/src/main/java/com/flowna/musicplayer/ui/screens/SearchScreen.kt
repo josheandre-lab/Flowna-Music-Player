@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -266,6 +267,13 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             contentPadding = PaddingValues(bottom = 120.dp)
                         ) {
+                            item {
+                                Text(
+                                    text = "${results.size} sonuç bulundu",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
                             items(results, key = { it.videoUrl }) { result ->
                                 SearchResultItem(
                                     result = result,
@@ -440,17 +448,25 @@ private fun SearchChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    FlownaPanel(
+    Surface(
         modifier = modifier.clickable(onClick = onClick),
-        verticalSpacing = 0.dp
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 8.dp
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -460,6 +476,10 @@ private fun SearchResultItem(
     onPreview: () -> Unit,
     onDownload: () -> Unit
 ) {
+    LaunchedEffect(result.videoUrl) {
+        SearchRepository.prefetchPreviews(listOf(result))
+    }
+
     FlownaPanel(verticalSpacing = 14.dp) {
         Row(
             modifier = Modifier.fillMaxWidth(),

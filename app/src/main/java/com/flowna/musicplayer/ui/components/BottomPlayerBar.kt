@@ -57,19 +57,19 @@ fun BottomPlayerBar(
             modifier = modifier
                 .fillMaxWidth()
                 .clickable(onClick = onOpenPlayer),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(26.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-            shadowElevation = 10.dp
+            shadowElevation = 12.dp
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(3.dp)
                         .clip(CircleShape),
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -82,8 +82,8 @@ fun BottomPlayerBar(
                     SongArtwork(
                         song = song,
                         modifier = Modifier
-                            .size(50.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(15.dp))
                     )
 
                     Spacer(modifier = Modifier.width(10.dp))
@@ -120,7 +120,7 @@ fun BottomPlayerBar(
                     ) {
                         IconButton(
                             onClick = { playerViewModel.togglePlayPause() },
-                            modifier = Modifier.size(42.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -133,7 +133,7 @@ fun BottomPlayerBar(
                     Box {
                         IconButton(
                             onClick = { playerViewModel.next() },
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipNext,

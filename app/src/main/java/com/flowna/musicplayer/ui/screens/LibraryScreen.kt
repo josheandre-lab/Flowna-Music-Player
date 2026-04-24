@@ -34,6 +34,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -58,6 +59,7 @@ import coil.compose.AsyncImage
 import com.flowna.musicplayer.data.FlownaSong
 import com.flowna.musicplayer.data.recommendation.RecommendationItem
 import com.flowna.musicplayer.data.repository.LibraryRepository
+import com.flowna.musicplayer.data.repository.SearchRepository
 import com.flowna.musicplayer.player.PlayerViewModel
 import com.flowna.musicplayer.service.DownloadService
 import com.flowna.musicplayer.ui.components.FlownaCircleIconButton
@@ -336,7 +338,7 @@ private fun LibrarySummaryCard(
             )
             Box(
                 modifier = Modifier
-                    .size(92.dp)
+                    .size(88.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center
@@ -344,7 +346,7 @@ private fun LibrarySummaryCard(
                 Icon(
                     imageVector = Icons.Default.MusicNote,
                     contentDescription = null,
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -358,19 +360,47 @@ private fun MiniLibraryStatCard(
     value: String,
     modifier: Modifier = Modifier
 ) {
-    FlownaPanel(
+    Surface(
         modifier = modifier,
-        verticalSpacing = 6.dp
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 8.dp
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(
+    title: String,
+    subtitle: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = value,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface
+            text = subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -383,15 +413,9 @@ private fun RecommendationSection(
     onOnlineDownloadClick: (RecommendationItem.OnlineCandidate) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "Senin için önerilenler",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            text = "Dinleme alışkanlıkların ve benzer tarzlara göre seçildi.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        SectionTitle(
+            title = "Senin için önerilenler",
+            subtitle = "Dinleme alışkanlıkların ve benzer tarzlara göre seçildi."
         )
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -416,8 +440,25 @@ private fun RecommendationCard(
     onOnlinePreviewClick: (RecommendationItem.OnlineCandidate) -> Unit,
     onOnlineDownloadClick: (RecommendationItem.OnlineCandidate) -> Unit
 ) {
+    if (item is RecommendationItem.OnlineCandidate) {
+        LaunchedEffect(item.videoUrl) {
+            SearchRepository.prefetchPreviews(
+                listOf(
+                    com.flowna.musicplayer.data.repository.SearchResult(
+                        title = item.title,
+                        thumbnailUrl = item.thumbnailUrl,
+                        duration = item.durationSeconds,
+                        videoId = item.videoId,
+                        videoUrl = item.videoUrl,
+                        uploaderName = item.artist
+                    )
+                )
+            )
+        }
+    }
+
     FlownaPanel(
-        modifier = Modifier.width(204.dp),
+        modifier = Modifier.width(182.dp),
         verticalSpacing = 10.dp
     ) {
         when (item) {
@@ -426,7 +467,7 @@ private fun RecommendationCard(
                     song = item.song,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(164.dp)
+                        .height(152.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .clickable { onLocalSongClick(item.song) }
                 )
@@ -436,7 +477,7 @@ private fun RecommendationCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(164.dp)
+                        .height(152.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .clickable { onOnlinePreviewClick(item) }
                 ) {
@@ -511,10 +552,9 @@ private fun MostPlayedSection(
     onSongClick: (FlownaSong) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "En çok dinlenenler",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground
+        SectionTitle(
+            title = "En çok dinlenenler",
+            subtitle = "Son bitirilen çalmalara göre sıralanır."
         )
         FlownaPanel(verticalSpacing = 8.dp) {
             songs.forEachIndexed { index, song ->

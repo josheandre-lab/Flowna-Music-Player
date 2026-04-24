@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Favorite
@@ -33,7 +34,6 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
@@ -234,7 +234,7 @@ fun PlayerScreen(
 
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxWidth(0.90f)
                     .aspectRatio(1f)
                     .offset { IntOffset(0, animatedArtworkOffset.roundToInt()) }
                     .graphicsLayer {
@@ -376,7 +376,7 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PlayerShortcut(
-                    icon = Icons.Default.QueueMusic,
+                    icon = Icons.AutoMirrored.Filled.QueueMusic,
                     label = "Sıraya Ekle",
                     onClick = { playerViewModel.addCurrentSongToQueue() }
                 )
@@ -414,7 +414,7 @@ fun PlayerScreen(
                     onClick = { playerViewModel.seekBackward() }
                 )
                 Surface(
-                    modifier = Modifier.size(104.dp),
+                    modifier = Modifier.size(94.dp),
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primary,
                     shadowElevation = 20.dp
@@ -423,7 +423,7 @@ fun PlayerScreen(
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isPlaying) "Duraklat" else "Çal",
-                            modifier = Modifier.size(46.dp),
+                            modifier = Modifier.size(40.dp),
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }

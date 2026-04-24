@@ -5,11 +5,18 @@ import com.flowna.musicplayer.util.NewPipeDownloader
 import com.flowna.musicplayer.util.TextNormalizer
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import java.util.LinkedHashMap
 import java.util.LinkedHashSet
 
 data class SearchResult(
@@ -23,7 +30,14 @@ data class SearchResult(
 
 object SearchRepository {
 
+    private const val PREVIEW_PREFETCH_COUNT = 4
+    private const val PREVIEW_CACHE_SIZE = 12
+
     private var initialized = false
+    private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val previewCacheMutex = Mutex()
+    private val previewCache = LinkedHashMap<String, PreviewTrack>(PREVIEW_CACHE_SIZE, 0.75f, true)
+    private val inFlightPreviews = mutableMapOf<String, kotlinx.coroutines.Deferred<Result<PreviewTrack>>>()
 
     private fun ensureInitialized() {
         if (!initialized) {
@@ -59,6 +73,7 @@ object SearchRepository {
                     )
                 }
 
+            prefetchPreviews(results.take(PREVIEW_PREFETCH_COUNT))
             Result.success(results)
         } catch (error: Exception) {
             Result.failure(error)
@@ -104,30 +119,71 @@ object SearchRepository {
         durationSeconds: Long,
         videoId: String,
         videoUrl: String
-    ): Result<PreviewTrack> = withContext(Dispatchers.IO) {
+    ): Result<PreviewTrack> {
         val normalizedUrl = normalizeVideoUrl(videoUrl, videoId)
         val safeTitle = TextNormalizer.normalizeHumanText(title) ?: title
         val safeArtist = TextNormalizer.normalizeHumanText(artist) ?: artist
         val safeVideoId = videoId.ifBlank { extractVideoId(videoUrl) }
+        val cacheKey = buildPreviewCacheKey(safeVideoId, normalizedUrl)
 
+        getCachedPreview(cacheKey)?.let { return Result.success(it) }
+
+        val deferred = previewCacheMutex.withLock {
+            inFlightPreviews[cacheKey] ?: previewScope.async {
+                resolvePreviewTrackUncached(
+                    title = safeTitle,
+                    artist = safeArtist,
+                    thumbnailUrl = thumbnailUrl,
+                    durationSeconds = durationSeconds,
+                    videoId = safeVideoId,
+                    videoUrl = normalizedUrl
+                )
+            }.also { inFlightPreviews[cacheKey] = it }
+        }
+
+        val result = deferred.await()
+        previewCacheMutex.withLock {
+            if (inFlightPreviews[cacheKey] === deferred) {
+                inFlightPreviews.remove(cacheKey)
+            }
+            result.getOrNull()?.let { cachePreview(cacheKey, it) }
+        }
+        return result
+    }
+
+    fun prefetchPreviews(results: List<SearchResult>) {
+        results.forEach { result ->
+            previewScope.launch {
+                resolvePreviewTrack(result)
+            }
+        }
+    }
+
+    private suspend fun resolvePreviewTrackUncached(
+        title: String,
+        artist: String,
+        thumbnailUrl: String,
+        durationSeconds: Long,
+        videoId: String,
+        videoUrl: String
+    ): Result<PreviewTrack> = withContext(Dispatchers.IO) {
         runCatching {
-            resolvePreviewTrackWithYoutubeDl(
-                title = safeTitle,
-                artist = safeArtist,
+            resolvePreviewTrackWithNewPipe(
+                title = title,
+                artist = artist,
                 thumbnailUrl = thumbnailUrl,
                 durationSeconds = durationSeconds,
-                videoId = safeVideoId,
-                videoUrl = normalizedUrl
+                videoId = videoId,
+                videoUrl = videoUrl
             )
         }.recoverCatching {
-            ensureInitialized()
-            resolvePreviewTrackWithNewPipe(
-                title = safeTitle,
-                artist = safeArtist,
+            resolvePreviewTrackWithYoutubeDl(
+                title = title,
+                artist = artist,
                 thumbnailUrl = thumbnailUrl,
                 durationSeconds = durationSeconds,
-                videoId = safeVideoId,
-                videoUrl = normalizedUrl
+                videoId = videoId,
+                videoUrl = videoUrl
             )
         }.fold(
             onSuccess = { Result.success(it) },
@@ -182,6 +238,7 @@ object SearchRepository {
         videoId: String,
         videoUrl: String
     ): PreviewTrack {
+        ensureInitialized()
         val extractor = ServiceList.YouTube.getStreamExtractor(videoUrl)
         extractor.fetchPage()
 
@@ -202,6 +259,24 @@ object SearchRepository {
             videoUrl = videoUrl,
             durationSeconds = extractor.length.takeIf { it > 0 } ?: durationSeconds
         )
+    }
+
+    private fun buildPreviewCacheKey(videoId: String, videoUrl: String): String {
+        return videoId.ifBlank { videoUrl }
+    }
+
+    private suspend fun getCachedPreview(cacheKey: String): PreviewTrack? {
+        return previewCacheMutex.withLock {
+            previewCache[cacheKey]
+        }
+    }
+
+    private fun cachePreview(cacheKey: String, track: PreviewTrack) {
+        previewCache[cacheKey] = track
+        while (previewCache.size > PREVIEW_CACHE_SIZE) {
+            val eldestKey = previewCache.entries.firstOrNull()?.key ?: break
+            previewCache.remove(eldestKey)
+        }
     }
 
     private fun extractYoutubeDlError(stdout: String?, stderr: String?): String {

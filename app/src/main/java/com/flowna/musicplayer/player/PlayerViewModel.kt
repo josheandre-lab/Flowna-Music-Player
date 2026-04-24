@@ -225,21 +225,39 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun startPreview(result: com.flowna.musicplayer.data.repository.SearchResult): Result<Unit> {
-        PreviewPlayerController.showLoading()
+        PreviewPlayerController.showLoading(
+            PreviewTrack(
+                videoId = result.videoId,
+                title = result.title,
+                artist = result.uploaderName,
+                artworkUrl = result.thumbnailUrl,
+                streamUrl = "",
+                videoUrl = result.videoUrl,
+                durationSeconds = result.duration
+            )
+        )
         return SearchRepository.resolvePreviewTrack(result)
             .fold(
                 onSuccess = { beginPreviewPlayback(it) },
                 onFailure = {
-                    PreviewPlayerController.showError(
-                        it.message ?: "Önizleme başlatılamadı."
-                    )
+                    PreviewPlayerController.stopPreview()
                     Result.failure(it)
                 }
             )
     }
 
     suspend fun startPreview(candidate: RecommendationItem.OnlineCandidate): Result<Unit> {
-        PreviewPlayerController.showLoading()
+        PreviewPlayerController.showLoading(
+            PreviewTrack(
+                videoId = candidate.videoId,
+                title = candidate.title,
+                artist = candidate.artist,
+                artworkUrl = candidate.thumbnailUrl,
+                streamUrl = "",
+                videoUrl = candidate.videoUrl,
+                durationSeconds = candidate.durationSeconds
+            )
+        )
         return SearchRepository.resolvePreviewTrack(
             title = candidate.title,
             artist = candidate.artist,
@@ -250,9 +268,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         ).fold(
             onSuccess = { beginPreviewPlayback(it) },
             onFailure = {
-                PreviewPlayerController.showError(
-                    it.message ?: "Önizleme başlatılamadı."
-                )
+                PreviewPlayerController.stopPreview()
                 Result.failure(it)
             }
         )

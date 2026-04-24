@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -45,13 +46,13 @@ fun PreviewPlayerBar(
 
     FlownaPanel(
         modifier = modifier.fillMaxWidth(),
-        verticalSpacing = 8.dp
+        verticalSpacing = 7.dp
     ) {
         LinearProgressIndicator(
             progress = { previewState.progress },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
+                .height(3.dp)
                 .clip(CircleShape),
             color = MaterialTheme.colorScheme.primary,
             trackColor = MaterialTheme.colorScheme.primaryContainer
@@ -70,14 +71,14 @@ fun PreviewPlayerBar(
                         model = track.artworkUrl,
                         contentDescription = track.title,
                         modifier = Modifier
-                            .size(50.dp)
-                            .clip(RoundedCornerShape(16.dp)),
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(15.dp)),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Surface(
-                        modifier = Modifier.size(50.dp),
-                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.size(48.dp),
+                        shape = RoundedCornerShape(15.dp),
                         color = MaterialTheme.colorScheme.primaryContainer
                     ) {}
                 }
@@ -120,13 +121,21 @@ fun PreviewPlayerBar(
                 IconButton(
                     onClick = { playerViewModel.togglePreviewPlayPause() },
                     enabled = !previewState.isLoading && previewState.errorMessage == null && track != null,
-                    modifier = Modifier.size(42.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(
-                        imageVector = if (previewState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (previewState.isPlaying) "Duraklat" else "Çal",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    if (previewState.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (previewState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (previewState.isPlaying) "Duraklat" else "Çal",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
@@ -137,7 +146,7 @@ fun PreviewPlayerBar(
                 IconButton(
                     onClick = { playerViewModel.downloadPreviewTrack() },
                     enabled = !previewState.isLoading && previewState.errorMessage == null && track != null,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Download,
@@ -153,7 +162,7 @@ fun PreviewPlayerBar(
             ) {
                 IconButton(
                     onClick = { playerViewModel.stopPreviewAndRestore() },
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,

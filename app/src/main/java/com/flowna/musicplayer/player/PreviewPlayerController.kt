@@ -41,10 +41,11 @@ object PreviewPlayerController {
         }
     }
 
-    fun showLoading() {
+    fun showLoading(track: PreviewTrack? = null) {
         _state.value = PreviewPlaybackState(
             isVisible = true,
             isLoading = true,
+            track = track,
             errorMessage = null
         )
     }

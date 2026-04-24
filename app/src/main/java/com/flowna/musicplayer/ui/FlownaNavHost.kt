@@ -57,7 +57,7 @@ sealed class FlownaScreen(
     val icon: ImageVector
 ) {
     data object Search : FlownaScreen("search", "Ara", Icons.Default.Search)
-    data object Downloads : FlownaScreen("downloads", "İndirme", Icons.Default.Download)
+    data object Downloads : FlownaScreen("downloads", "İndirmeler", Icons.Default.Download)
     data object Library : FlownaScreen("library", "Kütüphane", Icons.Default.LibraryMusic)
     data object Settings : FlownaScreen("settings", "Ayarlar", Icons.Default.Settings)
     data object Player : FlownaScreen("player", "Çalıyor", Icons.Default.LibraryMusic)
@@ -97,8 +97,8 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
                 Column(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (previewState.isVisible) {
                         PreviewPlayerBar(playerViewModel = playerViewModel)
@@ -191,9 +191,9 @@ private fun FlownaBottomNavigation(
     onSelect: (FlownaScreen) -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(32.dp),
+        shape = RoundedCornerShape(30.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        shadowElevation = 18.dp
+        shadowElevation = 14.dp
     ) {
         Row(
             modifier = Modifier
@@ -202,7 +202,7 @@ private fun FlownaBottomNavigation(
                     Brush.verticalGradient(
                         colors = listOf(
                             MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.86f)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)
                         )
                     )
                 )
@@ -218,8 +218,8 @@ private fun FlownaBottomNavigation(
                             if (selected) {
                                 Brush.horizontalGradient(
                                     colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.30f),
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                     )
                                 )
                             } else {
@@ -227,12 +227,12 @@ private fun FlownaBottomNavigation(
                                     colors = listOf(Color.Transparent, Color.Transparent)
                                 )
                             },
-                            shape = RoundedCornerShape(24.dp)
+                            shape = RoundedCornerShape(22.dp)
                         )
                         .clickable { onSelect(screen) }
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 11.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Icon(
                         imageVector = screen.icon,
