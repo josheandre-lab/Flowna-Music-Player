@@ -91,14 +91,14 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (currentRoute != FlownaScreen.Player.route) {
                 Column(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (previewState.isVisible) {
                         PreviewPlayerBar(playerViewModel = playerViewModel)

@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,21 +35,25 @@ import com.flowna.musicplayer.util.PermissionHelper
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             FlownaTheme {
-                var hasPermissions by remember {
-                    mutableStateOf(PermissionHelper.hasAllPermissions(this@MainActivity))
-                }
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    var hasPermissions by remember {
+                        mutableStateOf(PermissionHelper.hasAllPermissions(this@MainActivity))
+                    }
 
-                if (hasPermissions) {
-                    val playerViewModel: PlayerViewModel = viewModel()
-                    FlownaNavHost(playerViewModel = playerViewModel)
-                } else {
-                    PermissionScreen(
-                        missingPermissions = PermissionHelper.getMissingPermissions(this@MainActivity),
-                        onPermissionsGranted = { hasPermissions = true }
-                    )
+                    if (hasPermissions) {
+                        val playerViewModel: PlayerViewModel = viewModel()
+                        FlownaNavHost(playerViewModel = playerViewModel)
+                    } else {
+                        PermissionScreen(
+                            missingPermissions = PermissionHelper.getMissingPermissions(this@MainActivity),
+                            onPermissionsGranted = { hasPermissions = true }
+                        )
+                    }
                 }
             }
         }

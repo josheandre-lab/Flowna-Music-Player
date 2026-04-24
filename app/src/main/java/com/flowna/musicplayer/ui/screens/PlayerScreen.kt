@@ -188,8 +188,8 @@ fun PlayerScreen(
                     ReactiveWaveform(
                         audioSessionId = audioSessionId,
                         isActive = isPlaying,
-                        accent = palette.accent,
-                        glow = palette.glow,
+                        accent = MaterialTheme.colorScheme.primary,
+                        glow = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
                         modifier = Modifier.width(94.dp)
                     )
                 }
@@ -276,20 +276,6 @@ fun PlayerScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 22.dp)
-                    ) {
-                        ReactiveWaveform(
-                            audioSessionId = audioSessionId,
-                            isActive = isPlaying,
-                            accent = palette.accent,
-                            glow = palette.glow
-                        )
-                    }
-
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -307,7 +293,7 @@ fun PlayerScreen(
                             Icon(
                                 imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = if (isFavorite) "Favoriden kaldır" else "Favorilere ekle",
-                                tint = palette.accent
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -360,8 +346,8 @@ fun PlayerScreen(
                 onValueChange = { playerViewModel.seekTo(it) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
-                    thumbColor = palette.accent,
-                    activeTrackColor = palette.accent,
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
                     inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
@@ -430,7 +416,7 @@ fun PlayerScreen(
                 Surface(
                     modifier = Modifier.size(104.dp),
                     shape = CircleShape,
-                    color = palette.accent,
+                    color = MaterialTheme.colorScheme.primary,
                     shadowElevation = 20.dp
                 ) {
                     IconButton(onClick = { playerViewModel.togglePlayPause() }) {

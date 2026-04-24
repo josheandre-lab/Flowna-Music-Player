@@ -53,85 +53,96 @@ fun BottomPlayerBar(
             onDispose { playerViewModel.setPlaybackUiVisible(false) }
         }
 
-        FlownaPanel(
+        Surface(
             modifier = modifier
                 .fillMaxWidth()
                 .clickable(onClick = onOpenPlayer),
-            verticalSpacing = 10.dp
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            shadowElevation = 10.dp
         ) {
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(CircleShape),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SongArtwork(
-                    song = song,
+                LinearProgressIndicator(
+                    progress = { progress },
                     modifier = Modifier
-                        .size(58.dp)
-                        .clip(RoundedCornerShape(18.dp))
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = song.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee()
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = listOfNotNull(
-                            song.artist.takeIf { it.isNotBlank() },
-                            song.album.takeIf { it.isNotBlank() }
-                        ).joinToString(" | ").ifBlank { "Bilinmeyen Sanatçı" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { playerViewModel.togglePlayPause() }) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Duraklat" else "Çal",
-                            tint = MaterialTheme.colorScheme.primary
+                    SongArtwork(
+                        song = song,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = song.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee()
+                        )
+                        Text(
+                            text = listOfNotNull(
+                                song.artist.takeIf { it.isNotBlank() },
+                                song.album.takeIf { it.isNotBlank() }
+                            ).joinToString(" | ").ifBlank { "Bilinmeyen sanatçı" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                }
 
-                Box {
-                    IconButton(onClick = { playerViewModel.next() }) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Sonraki",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    ) {
+                        IconButton(
+                            onClick = { playerViewModel.togglePlayPause() },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Duraklat" else "Çal",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { playerViewModel.next() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Sonraki",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
-            }
-
-            if (song.isFlownaDownload) {
-                FlownaStatusBadge(label = "Flowna İndirilenler")
             }
         }
     }

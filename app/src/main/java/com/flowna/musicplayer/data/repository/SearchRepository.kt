@@ -1,19 +1,21 @@
 package com.flowna.musicplayer.data.repository
 
+import com.flowna.musicplayer.player.PreviewTrack
 import com.flowna.musicplayer.util.NewPipeDownloader
 import com.flowna.musicplayer.util.TextNormalizer
+import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
-import com.flowna.musicplayer.player.PreviewTrack
 import java.util.LinkedHashSet
 
 data class SearchResult(
     val title: String,
     val thumbnailUrl: String,
-    val duration: Long, // seconds
+    val duration: Long,
     val videoId: String,
     val videoUrl: String,
     val uploaderName: String
@@ -58,8 +60,8 @@ object SearchRepository {
                 }
 
             Result.success(results)
-        } catch (e: Exception) {
-            Result.failure(e)
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -79,8 +81,8 @@ object SearchRepository {
                 .filter { it.isNotBlank() }
 
             Result.success(LinkedHashSet(suggestionList).take(6))
-        } catch (e: Exception) {
-            Result.failure(e)
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -103,33 +105,136 @@ object SearchRepository {
         videoId: String,
         videoUrl: String
     ): Result<PreviewTrack> = withContext(Dispatchers.IO) {
-        try {
-            ensureInitialized()
+        val normalizedUrl = normalizeVideoUrl(videoUrl, videoId)
+        val safeTitle = TextNormalizer.normalizeHumanText(title) ?: title
+        val safeArtist = TextNormalizer.normalizeHumanText(artist) ?: artist
+        val safeVideoId = videoId.ifBlank { extractVideoId(videoUrl) }
 
-            val extractor = ServiceList.YouTube.getStreamExtractor(normalizeVideoUrl(videoUrl, videoId))
-            extractor.fetchPage()
-
-            val audioStream = extractor.audioStreams
-                .filter { it.url?.isNotBlank() == true }
-                .maxByOrNull { maxOf(it.averageBitrate, it.bitrate) }
-
-            val streamUrl = audioStream?.url?.takeIf { it.isNotBlank() }
-                ?: extractor.hlsUrl?.takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Onizleme akisi bulunamadi.")
-
-            Result.success(
-                PreviewTrack(
-                    videoId = videoId.ifBlank { extractVideoId(videoUrl) },
-                    title = TextNormalizer.normalizeHumanText(title) ?: title,
-                    artist = TextNormalizer.normalizeHumanText(artist) ?: artist,
-                    artworkUrl = extractor.thumbnails.firstOrNull()?.url ?: thumbnailUrl,
-                    streamUrl = streamUrl,
-                    videoUrl = normalizeVideoUrl(videoUrl, videoId),
-                    durationSeconds = extractor.length.takeIf { it > 0 } ?: durationSeconds
-                )
+        runCatching {
+            resolvePreviewTrackWithYoutubeDl(
+                title = safeTitle,
+                artist = safeArtist,
+                thumbnailUrl = thumbnailUrl,
+                durationSeconds = durationSeconds,
+                videoId = safeVideoId,
+                videoUrl = normalizedUrl
             )
-        } catch (e: Exception) {
-            Result.failure(e)
+        }.recoverCatching {
+            ensureInitialized()
+            resolvePreviewTrackWithNewPipe(
+                title = safeTitle,
+                artist = safeArtist,
+                thumbnailUrl = thumbnailUrl,
+                durationSeconds = durationSeconds,
+                videoId = safeVideoId,
+                videoUrl = normalizedUrl
+            )
+        }.fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { Result.failure(IllegalStateException(mapPreviewError(it), it)) }
+        )
+    }
+
+    private fun resolvePreviewTrackWithYoutubeDl(
+        title: String,
+        artist: String,
+        thumbnailUrl: String,
+        durationSeconds: Long,
+        videoId: String,
+        videoUrl: String
+    ): PreviewTrack {
+        val request = YoutubeDLRequest(videoUrl).apply {
+            addOption("--no-playlist")
+            addOption("--skip-download")
+            addOption("--no-warnings")
+            addOption("-f", "bestaudio")
+            addOption("-g")
+        }
+
+        val response = YoutubeDL.getInstance().execute(request)
+        if (response.exitCode != 0) {
+            throw IllegalStateException(extractYoutubeDlError(response.out, response.err))
+        }
+
+        val streamUrl = response.out
+            .lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
+            ?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Onizleme akisi bulunamadi.")
+
+        return PreviewTrack(
+            videoId = videoId,
+            title = title,
+            artist = artist,
+            artworkUrl = thumbnailUrl,
+            streamUrl = streamUrl,
+            videoUrl = videoUrl,
+            durationSeconds = durationSeconds
+        )
+    }
+
+    private fun resolvePreviewTrackWithNewPipe(
+        title: String,
+        artist: String,
+        thumbnailUrl: String,
+        durationSeconds: Long,
+        videoId: String,
+        videoUrl: String
+    ): PreviewTrack {
+        val extractor = ServiceList.YouTube.getStreamExtractor(videoUrl)
+        extractor.fetchPage()
+
+        val audioStream = extractor.audioStreams
+            .filter { !it.url.isNullOrBlank() }
+            .maxByOrNull { maxOf(it.averageBitrate, it.bitrate) }
+
+        val streamUrl = audioStream?.url?.takeIf { it.isNotBlank() }
+            ?: extractor.hlsUrl?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Onizleme akisi bulunamadi.")
+
+        return PreviewTrack(
+            videoId = videoId,
+            title = title,
+            artist = artist,
+            artworkUrl = extractor.thumbnails.firstOrNull()?.url ?: thumbnailUrl,
+            streamUrl = streamUrl,
+            videoUrl = videoUrl,
+            durationSeconds = extractor.length.takeIf { it > 0 } ?: durationSeconds
+        )
+    }
+
+    private fun extractYoutubeDlError(stdout: String?, stderr: String?): String {
+        return listOfNotNull(stderr, stdout)
+            .asSequence()
+            .flatMap { it.lineSequence() }
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?: "Onizleme baslatilamadi."
+    }
+
+    private fun mapPreviewError(error: Throwable): String {
+        val message = error.message.orEmpty().trim()
+        val normalized = message.lowercase()
+        return when {
+            "page needs to be reloaded" in normalized -> {
+                "Onizleme akisi su an hazirlanamadi. Lutfen tekrar dene."
+            }
+
+            "sign in" in normalized || "private video" in normalized || "confirm your age" in normalized -> {
+                "Bu video icin onizleme kullanilamiyor."
+            }
+
+            "network" in normalized || "timeout" in normalized || "connection" in normalized -> {
+                "Baglanti nedeniyle onizleme baslatilamadi."
+            }
+
+            "onizleme akisi bulunamadi" in normalized -> {
+                "Bu sarki icin onizleme bulunamadi."
+            }
+
+            message.isNotBlank() -> message
+            else -> "Onizleme baslatilamadi."
         }
     }
 
@@ -141,7 +246,7 @@ object SearchRepository {
                 url.contains("/shorts/") -> url.substringAfter("/shorts/").substringBefore("?")
                 else -> url.substringAfterLast("/").substringBefore("?")
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             ""
         }
     }

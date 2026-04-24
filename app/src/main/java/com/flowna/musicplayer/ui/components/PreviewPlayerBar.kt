@@ -41,11 +41,11 @@ fun PreviewPlayerBar(
     val previewState by playerViewModel.previewState.collectAsStateWithLifecycle()
     val track = previewState.track
 
-    if (!previewState.isVisible) return
+    if (!previewState.isVisible || previewState.errorMessage != null) return
 
     FlownaPanel(
         modifier = modifier.fillMaxWidth(),
-        verticalSpacing = 10.dp
+        verticalSpacing = 8.dp
     ) {
         LinearProgressIndicator(
             progress = { previewState.progress },
@@ -70,20 +70,20 @@ fun PreviewPlayerBar(
                         model = track.artworkUrl,
                         contentDescription = track.title,
                         modifier = Modifier
-                            .size(58.dp)
-                            .clip(RoundedCornerShape(18.dp)),
+                            .size(50.dp)
+                            .clip(RoundedCornerShape(16.dp)),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Surface(
-                        modifier = Modifier.size(58.dp),
-                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.size(50.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.primaryContainer
                     ) {}
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(
                 modifier = Modifier.weight(1f),
@@ -119,7 +119,8 @@ fun PreviewPlayerBar(
             ) {
                 IconButton(
                     onClick = { playerViewModel.togglePreviewPlayPause() },
-                    enabled = !previewState.isLoading && previewState.errorMessage == null && track != null
+                    enabled = !previewState.isLoading && previewState.errorMessage == null && track != null,
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Icon(
                         imageVector = if (previewState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -135,7 +136,8 @@ fun PreviewPlayerBar(
             ) {
                 IconButton(
                     onClick = { playerViewModel.downloadPreviewTrack() },
-                    enabled = !previewState.isLoading && previewState.errorMessage == null && track != null
+                    enabled = !previewState.isLoading && previewState.errorMessage == null && track != null,
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Download,
@@ -149,7 +151,10 @@ fun PreviewPlayerBar(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
             ) {
-                IconButton(onClick = { playerViewModel.stopPreviewAndRestore() }) {
+                IconButton(
+                    onClick = { playerViewModel.stopPreviewAndRestore() },
+                    modifier = Modifier.size(40.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Kapat",
