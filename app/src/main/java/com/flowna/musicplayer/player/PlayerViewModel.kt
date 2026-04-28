@@ -236,10 +236,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 durationSeconds = result.duration
             )
         )
-        return SearchRepository.resolvePreviewTrack(result)
+        return SearchRepository.resolvePreviewTrackPriority(result)
             .fold(
                 onSuccess = { beginPreviewPlayback(it) },
                 onFailure = {
+                    PreferencesHelper.recordLastPreviewError(it.message ?: "Önizleme başlatılamadı.")
                     PreviewPlayerController.stopPreview()
                     Result.failure(it)
                 }
@@ -258,7 +259,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 durationSeconds = candidate.durationSeconds
             )
         )
-        return SearchRepository.resolvePreviewTrack(
+        return SearchRepository.resolvePreviewTrackPriority(
             title = candidate.title,
             artist = candidate.artist,
             thumbnailUrl = candidate.thumbnailUrl,
@@ -268,6 +269,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         ).fold(
             onSuccess = { beginPreviewPlayback(it) },
             onFailure = {
+                PreferencesHelper.recordLastPreviewError(it.message ?: "Önizleme başlatılamadı.")
                 PreviewPlayerController.stopPreview()
                 Result.failure(it)
             }

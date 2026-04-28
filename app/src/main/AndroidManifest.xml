@@ -25,9 +25,9 @@
     <application
         android:name=".FlownaApp"
         android:allowBackup="true"
-        android:icon="@drawable/flowna_launcher_logo"
+        android:icon="@mipmap/ic_launcher"
         android:label="Flowna Music Player"
-        android:roundIcon="@drawable/flowna_launcher_logo"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Flowna">
 

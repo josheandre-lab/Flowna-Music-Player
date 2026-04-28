@@ -1,6 +1,12 @@
-package com.flowna.musicplayer.ui.screens
+﻿package com.flowna.musicplayer.ui.screens
 
+import android.app.Activity
 import android.content.Intent
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,16 +34,19 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,11 +78,22 @@ import com.flowna.musicplayer.ui.components.FlownaSectionHeading
 import com.flowna.musicplayer.ui.components.FlownaSegmentedTabs
 import com.flowna.musicplayer.ui.components.FlownaStatusBadge
 import com.flowna.musicplayer.ui.components.SongArtwork
+import com.flowna.musicplayer.ui.theme.FlownaSurface
+import com.flowna.musicplayer.ui.theme.FlownaTextMuted
+import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
+import com.flowna.musicplayer.ui.theme.FlownaTextSecondary
+import com.flowna.musicplayer.ui.theme.Lavender100
+import com.flowna.musicplayer.ui.theme.Lavender600
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+
+private data class PendingRenameRequest(
+    val song: FlownaSong,
+    val newTitle: String
+)
 
 private enum class LibraryTab(val title: String) {
     ALL("Tüm Şarkılar"),
@@ -93,6 +113,128 @@ fun LibraryScreen(
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(LibraryTab.ALL.ordinal) }
     var showScreenMenu by remember { mutableStateOf(false) }
     var requestedOnlineRecommendations by rememberSaveable { mutableStateOf(false) }
+    var pendingRenameRequest by remember { mutableStateOf<PendingRenameRequest?>(null) }
+    var pendingDeleteSong by remember { mutableStateOf<FlownaSong?>(null) }
+
+    fun needsMediaConsent(error: Throwable): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            (error is SecurityException || error.cause is SecurityException)
+    }
+
+    fun showOperationError(error: Throwable, fallback: String) {
+        scope.launch {
+            snackbarHostState.showSnackbar(error.message ?: fallback)
+        }
+    }
+
+    val writePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val request = pendingRenameRequest
+        pendingRenameRequest = null
+        if (result.resultCode == Activity.RESULT_OK && request != null) {
+            scope.launch {
+                LibraryRepository.renameDownloadedSong(context, request.song, request.newTitle)
+                    .onSuccess {
+                        snackbarHostState.showSnackbar("Şarkı adı güncellendi.")
+                    }
+                    .onFailure {
+                        snackbarHostState.showSnackbar(it.message ?: "Ad değiştirilemedi.")
+                    }
+            }
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Ad değiştirme izni verilmedi.") }
+        }
+    }
+
+    val deletePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val song = pendingDeleteSong
+        pendingDeleteSong = null
+        if (result.resultCode == Activity.RESULT_OK && song != null) {
+            scope.launch {
+                LibraryRepository.deleteDownloadedSong(context, song)
+                    .recoverCatching {
+                        LibraryRepository.forgetCachedSong(context, song).getOrThrow()
+                    }
+                    .onSuccess {
+                        snackbarHostState.showSnackbar("Şarkı silindi.")
+                    }
+                    .onFailure {
+                        snackbarHostState.showSnackbar(it.message ?: "Şarkı silinemedi.")
+                    }
+            }
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Silme izni verilmedi.") }
+        }
+    }
+
+    fun launchWriteConsent(song: FlownaSong, newTitle: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        runCatching {
+            pendingRenameRequest = PendingRenameRequest(song, newTitle)
+            val request = MediaStore.createWriteRequest(
+                context.contentResolver,
+                listOf(song.uri)
+            )
+            writePermissionLauncher.launch(
+                IntentSenderRequest.Builder(request.intentSender).build()
+            )
+        }.onFailure {
+            pendingRenameRequest = null
+            showOperationError(it, "Ad değiştirme izni başlatılamadı.")
+        }
+    }
+
+    fun launchDeleteConsent(song: FlownaSong) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        runCatching {
+            pendingDeleteSong = song
+            val request = MediaStore.createDeleteRequest(
+                context.contentResolver,
+                listOf(song.uri)
+            )
+            deletePermissionLauncher.launch(
+                IntentSenderRequest.Builder(request.intentSender).build()
+            )
+        }.onFailure {
+            pendingDeleteSong = null
+            showOperationError(it, "Silme izni başlatılamadı.")
+        }
+    }
+
+    fun renameDownloadedSong(song: FlownaSong, newTitle: String, allowConsent: Boolean) {
+        scope.launch {
+            LibraryRepository.renameDownloadedSong(context, song, newTitle)
+                .onSuccess {
+                    snackbarHostState.showSnackbar("Şarkı adı güncellendi.")
+                }
+                .onFailure {
+                    if (allowConsent && needsMediaConsent(it)) {
+                        launchWriteConsent(song, newTitle)
+                    } else {
+                        snackbarHostState.showSnackbar(it.message ?: "Ad değiştirilemedi.")
+                    }
+                }
+        }
+    }
+
+    fun deleteDownloadedSong(song: FlownaSong, allowConsent: Boolean) {
+        scope.launch {
+            LibraryRepository.deleteDownloadedSong(context, song)
+                .onSuccess {
+                    snackbarHostState.showSnackbar("Şarkı silindi.")
+                }
+                .onFailure {
+                    if (allowConsent && needsMediaConsent(it)) {
+                        launchDeleteConsent(song)
+                    } else {
+                        snackbarHostState.showSnackbar(it.message ?: "Şarkı silinemedi.")
+                    }
+                }
+        }
+    }
 
     LaunchedEffect(Unit) {
         LibraryRepository.ensureInitialized(context)
@@ -138,13 +280,17 @@ fun LibraryScreen(
                             FlownaCircleIconButton(
                                 icon = Icons.Default.Search,
                                 contentDescription = "Ara",
-                                onClick = onOpenSearch
+                                onClick = onOpenSearch,
+                                size = 42.dp,
+                                iconSize = 22.dp
                             )
                             Box {
                                 FlownaCircleIconButton(
                                     icon = Icons.Default.MoreVert,
                                     contentDescription = "Seçenekler",
-                                    onClick = { showScreenMenu = true }
+                                    onClick = { showScreenMenu = true },
+                                    size = 42.dp,
+                                    iconSize = 22.dp
                                 )
                                 DropdownMenu(
                                     expanded = showScreenMenu,
@@ -156,6 +302,12 @@ fun LibraryScreen(
                                             showScreenMenu = false
                                             scope.launch {
                                                 LibraryRepository.refreshLibrary(context)
+                                                    .onSuccess { count ->
+                                                        snackbarHostState.showSnackbar("$count şarkı yeniden tarandı.")
+                                                    }
+                                                    .onFailure {
+                                                        snackbarHostState.showSnackbar("Kütüphane taraması başarısız oldu.")
+                                                    }
                                                 LibraryRepository.refreshRecommendations(context, allowOnline = true)
                                             }
                                         }
@@ -165,6 +317,9 @@ fun LibraryScreen(
                                         onClick = {
                                             showScreenMenu = false
                                             selectedTabIndex = LibraryTab.ALL.ordinal
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Tüm şarkılar gösteriliyor.")
+                                            }
                                         }
                                     )
                                     DropdownMenuItem(
@@ -172,6 +327,9 @@ fun LibraryScreen(
                                         onClick = {
                                             showScreenMenu = false
                                             selectedTabIndex = LibraryTab.DOWNLOADED.ordinal
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("İndirilenler gösteriliyor.")
+                                            }
                                         }
                                     )
                                 }
@@ -226,6 +384,10 @@ fun LibraryScreen(
                             }
                         )
                     }
+                } else if (libraryState.songs.isNotEmpty()) {
+                    item {
+                        RecommendationEmptyState()
+                    }
                 }
 
                 if (libraryState.mostPlayedSongs.isNotEmpty()) {
@@ -270,7 +432,13 @@ fun LibraryScreen(
                         LibrarySongCard(
                             song = song,
                             onClick = { playerViewModel.playSong(song, visibleSongs) },
-                            onShare = { shareSong(context, song) }
+                            onShare = { shareSong(context, song) },
+                            onRename = { newTitle ->
+                                renameDownloadedSong(song, newTitle, allowConsent = true)
+                            },
+                            onDelete = {
+                                deleteDownloadedSong(song, allowConsent = true)
+                            }
                         )
                     }
                 }
@@ -294,7 +462,17 @@ private fun LibrarySummaryCard(
     lastScanAt: Long?,
     errorMessage: String?
 ) {
-    FlownaPanel(verticalSpacing = 18.dp) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Lavender600,
+        shadowElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -309,8 +487,8 @@ private fun LibrarySummaryCard(
                     "Önbellek hazır"
                 },
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (errorMessage != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                color = FlownaSurface.copy(alpha = 0.82f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -340,16 +518,17 @@ private fun LibrarySummaryCard(
                 modifier = Modifier
                     .size(88.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                    .background(FlownaSurface.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.MusicNote,
                     contentDescription = null,
                     modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = FlownaSurface
                 )
             }
+        }
         }
     }
 }
@@ -362,9 +541,9 @@ private fun MiniLibraryStatCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp
+        shape = RoundedCornerShape(14.dp),
+        color = FlownaSurface.copy(alpha = 0.16f),
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -375,12 +554,12 @@ private fun MiniLibraryStatCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = FlownaSurface.copy(alpha = 0.72f)
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = FlownaSurface
             )
         }
     }
@@ -395,12 +574,12 @@ private fun SectionTitle(
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground
+            color = FlownaTextPrimary
         )
         Text(
             text = subtitle,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = FlownaTextMuted
         )
     }
 }
@@ -412,6 +591,24 @@ private fun RecommendationSection(
     onOnlinePreviewClick: (RecommendationItem.OnlineCandidate) -> Unit,
     onOnlineDownloadClick: (RecommendationItem.OnlineCandidate) -> Unit
 ) {
+    LaunchedEffect(recommendations) {
+        SearchRepository.prefetchPreviews(
+            recommendations
+                .filterIsInstance<RecommendationItem.OnlineCandidate>()
+                .take(8)
+                .map { item ->
+                    com.flowna.musicplayer.data.repository.SearchResult(
+                        title = item.title,
+                        thumbnailUrl = item.thumbnailUrl,
+                        duration = item.durationSeconds,
+                        videoId = item.videoId,
+                        videoUrl = item.videoUrl,
+                        uploaderName = item.artist
+                    )
+                }
+        )
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle(
             title = "Senin için önerilenler",
@@ -440,25 +637,8 @@ private fun RecommendationCard(
     onOnlinePreviewClick: (RecommendationItem.OnlineCandidate) -> Unit,
     onOnlineDownloadClick: (RecommendationItem.OnlineCandidate) -> Unit
 ) {
-    if (item is RecommendationItem.OnlineCandidate) {
-        LaunchedEffect(item.videoUrl) {
-            SearchRepository.prefetchPreviews(
-                listOf(
-                    com.flowna.musicplayer.data.repository.SearchResult(
-                        title = item.title,
-                        thumbnailUrl = item.thumbnailUrl,
-                        duration = item.durationSeconds,
-                        videoId = item.videoId,
-                        videoUrl = item.videoUrl,
-                        uploaderName = item.artist
-                    )
-                )
-            )
-        }
-    }
-
     FlownaPanel(
-        modifier = Modifier.width(182.dp),
+        modifier = Modifier.width(168.dp),
         verticalSpacing = 10.dp
     ) {
         when (item) {
@@ -467,7 +647,7 @@ private fun RecommendationCard(
                     song = item.song,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(152.dp)
+                        .height(136.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .clickable { onLocalSongClick(item.song) }
                 )
@@ -477,7 +657,7 @@ private fun RecommendationCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(152.dp)
+                        .height(136.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .clickable { onOnlinePreviewClick(item) }
                 ) {
@@ -541,6 +721,41 @@ private fun RecommendationCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecommendationEmptyState() {
+    FlownaPanel(verticalSpacing = 10.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier.padding(12.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Öneriler hazırlanıyor",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Birkaç şarkı dinledikçe bu alan daha isabetli önerilerle dolacak.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -642,9 +857,14 @@ private fun EmptyLibraryState(selectedTab: LibraryTab) {
 private fun LibrarySongCard(
     song: FlownaSong,
     onClick: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var pendingTitle by remember(song.uri) { mutableStateOf(song.title) }
     FlownaPanel(
         modifier = Modifier.clickable(onClick = onClick),
         verticalSpacing = 0.dp
@@ -701,7 +921,9 @@ private fun LibrarySongCard(
                 FlownaCircleIconButton(
                     icon = Icons.Default.MoreVert,
                     contentDescription = "Seçenekler",
-                    onClick = { expanded = true }
+                    onClick = { expanded = true },
+                    size = 36.dp,
+                    iconSize = 20.dp
                 )
                 DropdownMenu(
                     expanded = expanded,
@@ -721,9 +943,82 @@ private fun LibrarySongCard(
                             onShare()
                         }
                     )
+                    if (song.isFlownaDownload) {
+                        DropdownMenuItem(
+                            text = { Text("Ad değiştir") },
+                            onClick = {
+                                expanded = false
+                                pendingTitle = song.title
+                                showRenameDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Sil") },
+                            onClick = {
+                                expanded = false
+                                showDeleteDialog = true
+                            }
+                        )
+                    }
                 }
             }
         }
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Şarkı adını değiştir") },
+            text = {
+                OutlinedTextField(
+                    value = pendingTitle,
+                    onValueChange = { pendingTitle = it },
+                    singleLine = true,
+                    label = { Text("Yeni ad") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val cleanedTitle = pendingTitle.trim()
+                        if (cleanedTitle.isNotBlank()) {
+                            onRename(cleanedTitle)
+                            showRenameDialog = false
+                        }
+                    }
+                ) {
+                    Text("Kaydet")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Vazgeç")
+                }
+            }
+        )
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Şarkı silinsin mi?") },
+            text = { Text("${song.title} cihazdan ve Flowna kütüphanesinden silinecek.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    }
+                ) {
+                    Text("Sil")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Vazgeç")
+                }
+            }
+        )
     }
 }
 
@@ -755,3 +1050,4 @@ private fun shareSong(
     }
     context.startActivity(Intent.createChooser(shareIntent, "Şarkıyı paylaş"))
 }
+

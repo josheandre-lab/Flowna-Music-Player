@@ -168,6 +168,102 @@ object LibraryRepository {
         result
     }
 
+    suspend fun renameDownloadedSong(
+        context: Context,
+        song: FlownaSong,
+        newTitle: String
+    ): Result<FlownaSong> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        loadCacheIfNeeded(appContext)
+
+        if (!song.isFlownaDownload) {
+            return@withContext Result.failure(IllegalArgumentException("Sadece Flowna indirilenleri yeniden adlandırılabilir."))
+        }
+
+        var updatedSongs: List<FlownaSong>? = null
+        val result = repositoryMutex.withLock {
+            runCatching {
+                val renamedSong = MediaStoreHelper.renameSong(appContext, song, newTitle)
+                    ?: error("Şarkı adı değiştirilemedi.")
+                val currentState = _state.value
+                updatedSongs = currentState.songs.map { cachedSong ->
+                    if (cachedSong.uri == song.uri || cachedSong.id == song.id) renamedSong else cachedSong
+                }
+                writeCache(
+                    context = appContext,
+                    songs = updatedSongs.orEmpty(),
+                    scannedAt = currentState.lastScanAt ?: System.currentTimeMillis()
+                )
+                _state.value = currentState.copy(songs = updatedSongs.orEmpty(), errorMessage = null)
+                renamedSong
+            }
+        }
+
+        updatedSongs?.let { refreshDerivedState(appContext, it, allowOnline = false) }
+        result
+    }
+
+    suspend fun deleteDownloadedSong(
+        context: Context,
+        song: FlownaSong
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        loadCacheIfNeeded(appContext)
+
+        if (!song.isFlownaDownload) {
+            return@withContext Result.failure(IllegalArgumentException("Sadece Flowna indirilenleri silinebilir."))
+        }
+
+        var updatedSongs: List<FlownaSong>? = null
+        val result = repositoryMutex.withLock {
+            runCatching {
+                if (!MediaStoreHelper.deleteSong(appContext, song)) {
+                    error("Şarkı silinemedi.")
+                }
+                val currentState = _state.value
+                updatedSongs = currentState.songs.filterNot { cachedSong ->
+                    cachedSong.uri == song.uri || cachedSong.id == song.id
+                }
+                writeCache(
+                    context = appContext,
+                    songs = updatedSongs.orEmpty(),
+                    scannedAt = currentState.lastScanAt ?: System.currentTimeMillis()
+                )
+                _state.value = currentState.copy(songs = updatedSongs.orEmpty(), errorMessage = null)
+            }
+        }
+
+        updatedSongs?.let { refreshDerivedState(appContext, it, allowOnline = false) }
+        result
+    }
+
+    suspend fun forgetCachedSong(
+        context: Context,
+        song: FlownaSong
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        loadCacheIfNeeded(appContext)
+
+        var updatedSongs: List<FlownaSong>? = null
+        val result = repositoryMutex.withLock {
+            runCatching {
+                val currentState = _state.value
+                updatedSongs = currentState.songs.filterNot { cachedSong ->
+                    cachedSong.uri == song.uri || cachedSong.id == song.id
+                }
+                writeCache(
+                    context = appContext,
+                    songs = updatedSongs.orEmpty(),
+                    scannedAt = currentState.lastScanAt ?: System.currentTimeMillis()
+                )
+                _state.value = currentState.copy(songs = updatedSongs.orEmpty(), errorMessage = null)
+            }
+        }
+
+        updatedSongs?.let { refreshDerivedState(appContext, it, allowOnline = false) }
+        result
+    }
+
     private suspend fun refreshDerivedState(
         context: Context,
         songs: List<FlownaSong>,

@@ -30,6 +30,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -69,6 +71,7 @@ fun DownloadsScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val downloads by DownloadTracker.downloads.collectAsStateWithLifecycle()
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -85,12 +88,13 @@ fun DownloadsScreen(
         }
     }
 
-    FlownaGradientBackground(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 12.dp)
-        ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        FlownaGradientBackground(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+            ) {
             FlownaSectionHeading(
                 title = "İndirmeler",
                 subtitle = "${downloads.size} kayıt takip ediliyor",
@@ -115,6 +119,9 @@ fun DownloadsScreen(
                                 onClick = {
                                     showScreenMenu = false
                                     DownloadTracker.clearCompleted()
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Tamamlanan kayıtlar temizlendi.")
+                                    }
                                 }
                             )
                             DropdownMenuItem(
@@ -122,6 +129,9 @@ fun DownloadsScreen(
                                 onClick = {
                                     showScreenMenu = false
                                     DownloadTracker.clearFailed()
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Başarısız kayıtlar temizlendi.")
+                                    }
                                 }
                             )
                             DropdownMenuItem(
@@ -129,6 +139,9 @@ fun DownloadsScreen(
                                 onClick = {
                                     showScreenMenu = false
                                     DownloadTracker.clearAll()
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Tüm indirme kayıtları temizlendi.")
+                                    }
                                 }
                             )
                         }
@@ -172,13 +185,16 @@ fun DownloadsScreen(
                                     downloadId = item.id
                                 )
                                 scope.launch {
-                                    result.onFailure {
+                                    result.onSuccess {
+                                        snackbarHostState.showSnackbar("İndirme tekrar başlatıldı.")
+                                    }.onFailure {
                                         DownloadTracker.updateStatus(
                                             id = item.id,
                                             status = DownloadStatus.FAILED,
                                             statusMessage = "İndirme yeniden başlatılamadı",
                                             errorMessage = it.message ?: "Bilinmeyen hata"
                                         )
+                                        snackbarHostState.showSnackbar("İndirme yeniden başlatılamadı.")
                                     }
                                 }
                             }
@@ -186,7 +202,15 @@ fun DownloadsScreen(
                     }
                 }
             }
+            }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 110.dp)
+        )
     }
 }
 

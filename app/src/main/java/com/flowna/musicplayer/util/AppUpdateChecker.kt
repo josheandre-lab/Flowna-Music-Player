@@ -46,7 +46,7 @@ object AppUpdateChecker {
             val hasPublishedApk = !releaseAssetUrl.isNullOrBlank()
             val latestTitle = releaseTitle
             val updateAvailable = when {
-                releaseJson != null -> releaseTitle != BuildConfig.VERSION_NAME
+                releaseJson != null -> compareVersionNames(releaseTitle, BuildConfig.VERSION_NAME) > 0
                 latestCommitInstant != null -> latestCommitInstant.toEpochMilli() > BuildConfig.BUILD_TIME_UTC
                 else -> false
             }
@@ -130,5 +130,29 @@ object AppUpdateChecker {
             }
         }
         return null
+    }
+
+    private fun compareVersionNames(candidate: String, current: String): Int {
+        val candidateParts = candidate.toVersionParts()
+        val currentParts = current.toVersionParts()
+        val maxSize = maxOf(candidateParts.size, currentParts.size)
+
+        repeat(maxSize) { index ->
+            val candidatePart = candidateParts.getOrElse(index) { 0 }
+            val currentPart = currentParts.getOrElse(index) { 0 }
+            if (candidatePart != currentPart) {
+                return candidatePart.compareTo(currentPart)
+            }
+        }
+        return 0
+    }
+
+    private fun String.toVersionParts(): List<Int> {
+        return trim()
+            .removePrefix("v")
+            .removePrefix("V")
+            .split(Regex("[^0-9]+"))
+            .filter { it.isNotBlank() }
+            .mapNotNull { it.toIntOrNull() }
     }
 }

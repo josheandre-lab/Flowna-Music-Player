@@ -24,7 +24,8 @@ import com.flowna.musicplayer.data.FlownaSong
 fun SongArtwork(
     song: FlownaSong?,
     modifier: Modifier = Modifier,
-    contentDescription: String? = song?.title
+    contentDescription: String? = song?.title,
+    contentScale: ContentScale = ContentScale.Crop
 ) {
     val artworkBitmap = remember(song?.id, song?.embeddedArtwork) {
         song?.embeddedArtwork?.let { artwork ->
@@ -40,7 +41,7 @@ fun SongArtwork(
                 bitmap = artworkBitmap.asImageBitmap(),
                 contentDescription = contentDescription,
                 modifier = modifier.clip(MaterialTheme.shapes.large),
-                contentScale = ContentScale.Crop
+                contentScale = contentScale
             )
         }
 
@@ -49,7 +50,7 @@ fun SongArtwork(
                 model = song.albumArtUri,
                 contentDescription = contentDescription,
                 modifier = modifier.clip(MaterialTheme.shapes.large),
-                contentScale = ContentScale.Crop
+                contentScale = contentScale
             )
         }
 

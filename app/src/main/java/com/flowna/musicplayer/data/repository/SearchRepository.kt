@@ -7,14 +7,19 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.util.LinkedHashMap
 import java.util.LinkedHashSet
@@ -32,12 +37,28 @@ object SearchRepository {
 
     private const val PREVIEW_PREFETCH_COUNT = 4
     private const val PREVIEW_CACHE_SIZE = 12
+    private const val PREVIEW_CACHE_TTL_MS = 15 * 60 * 1000L
+    private const val PREVIEW_PREFETCH_CONCURRENCY = 2
 
     private var initialized = false
     private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val previewCacheMutex = Mutex()
-    private val previewCache = LinkedHashMap<String, PreviewTrack>(PREVIEW_CACHE_SIZE, 0.75f, true)
+    private val previewPrefetchSemaphore = Semaphore(PREVIEW_PREFETCH_CONCURRENCY)
+    private val previewCache = LinkedHashMap<String, CachedPreviewTrack>(PREVIEW_CACHE_SIZE, 0.75f, true)
     private val inFlightPreviews = mutableMapOf<String, kotlinx.coroutines.Deferred<Result<PreviewTrack>>>()
+    private val prefetchJobs = mutableMapOf<String, Job>()
+    private val searchContinuationMutex = Mutex()
+    private val searchContinuations = mutableMapOf<String, SearchContinuation>()
+
+    private data class CachedPreviewTrack(
+        val track: PreviewTrack,
+        val cachedAtMillis: Long
+    )
+
+    private data class SearchContinuation(
+        val extractor: SearchExtractor,
+        val nextPage: Page?
+    )
 
     private fun ensureInitialized() {
         if (!initialized) {
@@ -46,7 +67,10 @@ object SearchRepository {
         }
     }
 
-    suspend fun search(query: String): Result<List<SearchResult>> = withContext(Dispatchers.IO) {
+    suspend fun search(
+        query: String,
+        warmPreview: Boolean = true
+    ): Result<List<SearchResult>> = withContext(Dispatchers.IO) {
         try {
             ensureInitialized()
 
@@ -54,26 +78,48 @@ object SearchRepository {
             val extractor = service.getSearchExtractor(query)
             extractor.fetchPage()
 
-            val results = extractor.initialPage.items
-                .filterIsInstance<StreamInfoItem>()
-                .map { item ->
-                    val thumbnailUrl = item.thumbnails.firstOrNull()?.url ?: ""
-                    val videoId = extractVideoId(item.url)
-                    val videoUrl = normalizeVideoUrl(item.url, videoId)
+            val initialPage = extractor.initialPage
+            val results = initialPage.items.toSearchResults()
 
-                    SearchResult(
-                        title = TextNormalizer.normalizeHumanText(item.name) ?: item.name,
-                        thumbnailUrl = thumbnailUrl,
-                        duration = item.duration,
-                        videoId = videoId,
-                        videoUrl = videoUrl,
-                        uploaderName = TextNormalizer.normalizeHumanText(item.uploaderName)
-                            ?: item.uploaderName
-                            ?: ""
-                    )
-                }
+            searchContinuationMutex.withLock {
+                searchContinuations[query.cacheKey()] = SearchContinuation(
+                    extractor = extractor,
+                    nextPage = initialPage.nextPage
+                )
+            }
 
-            prefetchPreviews(results.take(PREVIEW_PREFETCH_COUNT))
+            if (warmPreview) {
+                prefetchSearchResults(results.take(PREVIEW_PREFETCH_COUNT))
+            }
+            Result.success(results)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun searchMore(query: String): Result<List<SearchResult>> = withContext(Dispatchers.IO) {
+        try {
+            ensureInitialized()
+            val continuation = searchContinuationMutex.withLock {
+                searchContinuations[query.cacheKey()]
+            } ?: return@withContext Result.success(emptyList())
+
+            val nextPage = continuation.nextPage
+                ?: return@withContext Result.success(emptyList())
+
+            val nextItemsPage = continuation.extractor.getPage(nextPage)
+            val results = nextItemsPage.items.toSearchResults()
+
+            searchContinuationMutex.withLock {
+                searchContinuations[query.cacheKey()] = continuation.copy(
+                    nextPage = nextItemsPage.nextPage
+                )
+            }
+
+            if (results.isNotEmpty()) {
+                prefetchPreviews(results.take(PREVIEW_PREFETCH_COUNT))
+            }
+
             Result.success(results)
         } catch (error: Exception) {
             Result.failure(error)
@@ -109,6 +155,43 @@ object SearchRepository {
             durationSeconds = result.duration,
             videoId = result.videoId,
             videoUrl = result.videoUrl
+        )
+    }
+
+    suspend fun resolvePreviewTrackPriority(result: SearchResult): Result<PreviewTrack> {
+        return resolvePreviewTrackPriority(
+            title = result.title,
+            artist = result.uploaderName,
+            thumbnailUrl = result.thumbnailUrl,
+            durationSeconds = result.duration,
+            videoId = result.videoId,
+            videoUrl = result.videoUrl
+        )
+    }
+
+    suspend fun resolvePreviewTrackPriority(
+        title: String,
+        artist: String,
+        thumbnailUrl: String,
+        durationSeconds: Long,
+        videoId: String,
+        videoUrl: String
+    ): Result<PreviewTrack> {
+        val normalizedUrl = normalizeVideoUrl(videoUrl, videoId)
+        val safeVideoId = videoId.ifBlank { extractVideoId(videoUrl) }
+        val cacheKey = buildPreviewCacheKey(safeVideoId, normalizedUrl)
+
+        getCachedPreview(cacheKey)?.let { return Result.success(it) }
+        previewCacheMutex.withLock {
+            prefetchJobs.remove(cacheKey)?.cancel()
+        }
+        return resolvePreviewTrack(
+            title = title,
+            artist = artist,
+            thumbnailUrl = thumbnailUrl,
+            durationSeconds = durationSeconds,
+            videoId = safeVideoId,
+            videoUrl = normalizedUrl
         )
     }
 
@@ -152,9 +235,74 @@ object SearchRepository {
     }
 
     fun prefetchPreviews(results: List<SearchResult>) {
-        results.forEach { result ->
-            previewScope.launch {
-                resolvePreviewTrack(result)
+        schedulePreviewPrefetch(results.take(PREVIEW_PREFETCH_COUNT), cancelExisting = false)
+    }
+
+    private fun prefetchSearchResults(results: List<SearchResult>) {
+        schedulePreviewPrefetch(results, cancelExisting = true)
+    }
+
+    private fun schedulePreviewPrefetch(
+        results: List<SearchResult>,
+        cancelExisting: Boolean
+    ) {
+        if (results.isEmpty()) return
+
+        previewScope.launch {
+            if (cancelExisting) {
+                previewCacheMutex.withLock {
+                    prefetchJobs.values.forEach { it.cancel() }
+                    prefetchJobs.clear()
+                }
+            }
+
+            results.forEach { result ->
+                val cacheKey = buildPreviewCacheKey(
+                    videoId = result.videoId.ifBlank { extractVideoId(result.videoUrl) },
+                    videoUrl = normalizeVideoUrl(result.videoUrl, result.videoId)
+                )
+                if (getCachedPreview(cacheKey) != null) return@forEach
+
+                val prefetchJob = previewScope.launch {
+                    try {
+                        previewPrefetchSemaphore.withPermit {
+                            resolvePreviewTrack(result)
+                        }
+                    } finally {
+                        val activeJob = coroutineContext[Job]
+                        previewCacheMutex.withLock {
+                            if (prefetchJobs[cacheKey] === activeJob) {
+                                prefetchJobs.remove(cacheKey)
+                            }
+                        }
+                    }
+                }
+
+                previewCacheMutex.withLock {
+                    prefetchJobs[cacheKey]?.cancel()
+                    prefetchJobs[cacheKey] = prefetchJob
+                }
+            }
+        }
+    }
+
+    fun cancelPreviewPrefetch() {
+        previewScope.launch {
+            previewCacheMutex.withLock {
+                prefetchJobs.values.forEach { it.cancel() }
+                prefetchJobs.clear()
+            }
+        }
+    }
+
+    fun clearPreviewMemoryCache() {
+        previewScope.launch {
+            previewCacheMutex.withLock {
+                prefetchJobs.values.forEach { it.cancel() }
+                prefetchJobs.clear()
+                inFlightPreviews.values.forEach { it.cancel() }
+                inFlightPreviews.clear()
+                previewCache.clear()
             }
         }
     }
@@ -217,7 +365,7 @@ object SearchRepository {
             .map { it.trim() }
             .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
             ?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("Onizleme akisi bulunamadi.")
+            ?: throw IllegalStateException("Önizleme akışı bulunamadı.")
 
         return PreviewTrack(
             videoId = videoId,
@@ -248,7 +396,7 @@ object SearchRepository {
 
         val streamUrl = audioStream?.url?.takeIf { it.isNotBlank() }
             ?: extractor.hlsUrl?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("Onizleme akisi bulunamadi.")
+            ?: throw IllegalStateException("Önizleme akışı bulunamadı.")
 
         return PreviewTrack(
             videoId = videoId,
@@ -267,12 +415,21 @@ object SearchRepository {
 
     private suspend fun getCachedPreview(cacheKey: String): PreviewTrack? {
         return previewCacheMutex.withLock {
-            previewCache[cacheKey]
+            val cached = previewCache[cacheKey] ?: return@withLock null
+            if (System.currentTimeMillis() - cached.cachedAtMillis <= PREVIEW_CACHE_TTL_MS) {
+                cached.track
+            } else {
+                previewCache.remove(cacheKey)
+                null
+            }
         }
     }
 
     private fun cachePreview(cacheKey: String, track: PreviewTrack) {
-        previewCache[cacheKey] = track
+        previewCache[cacheKey] = CachedPreviewTrack(
+            track = track,
+            cachedAtMillis = System.currentTimeMillis()
+        )
         while (previewCache.size > PREVIEW_CACHE_SIZE) {
             val eldestKey = previewCache.entries.firstOrNull()?.key ?: break
             previewCache.remove(eldestKey)
@@ -285,7 +442,7 @@ object SearchRepository {
             .flatMap { it.lineSequence() }
             .map { it.trim() }
             .firstOrNull { it.isNotBlank() }
-            ?: "Onizleme baslatilamadi."
+            ?: "Önizleme başlatılamadı."
     }
 
     private fun mapPreviewError(error: Throwable): String {
@@ -293,23 +450,23 @@ object SearchRepository {
         val normalized = message.lowercase()
         return when {
             "page needs to be reloaded" in normalized -> {
-                "Onizleme akisi su an hazirlanamadi. Lutfen tekrar dene."
+                "Önizleme akışı şu an hazırlanamadı. Lütfen tekrar dene."
             }
 
             "sign in" in normalized || "private video" in normalized || "confirm your age" in normalized -> {
-                "Bu video icin onizleme kullanilamiyor."
+                "Bu video için önizleme kullanılamıyor."
             }
 
             "network" in normalized || "timeout" in normalized || "connection" in normalized -> {
-                "Baglanti nedeniyle onizleme baslatilamadi."
+                "Bağlantı nedeniyle önizleme başlatılamadı."
             }
 
-            "onizleme akisi bulunamadi" in normalized -> {
-                "Bu sarki icin onizleme bulunamadi."
+            "onizleme akisi bulunamadi" in normalized || "önizleme akışı bulunamadı" in normalized -> {
+                "Bu şarkı için önizleme bulunamadı."
             }
 
             message.isNotBlank() -> message
-            else -> "Onizleme baslatilamadi."
+            else -> "Önizleme başlatılamadı."
         }
     }
 
@@ -337,5 +494,29 @@ object SearchRepository {
             rawUrl.isNotBlank() -> "https://www.youtube.com/$rawUrl"
             else -> rawUrl
         }
+    }
+
+    private fun Iterable<*>.toSearchResults(): List<SearchResult> {
+        return filterIsInstance<StreamInfoItem>()
+            .map { item ->
+                val thumbnailUrl = item.thumbnails.firstOrNull()?.url ?: ""
+                val videoId = extractVideoId(item.url)
+                val videoUrl = normalizeVideoUrl(item.url, videoId)
+
+                SearchResult(
+                    title = TextNormalizer.normalizeHumanText(item.name) ?: item.name,
+                    thumbnailUrl = thumbnailUrl,
+                    duration = item.duration,
+                    videoId = videoId,
+                    videoUrl = videoUrl,
+                    uploaderName = TextNormalizer.normalizeHumanText(item.uploaderName)
+                        ?: item.uploaderName
+                        ?: ""
+                )
+            }
+    }
+
+    private fun String.cacheKey(): String {
+        return trim().lowercase()
     }
 }

@@ -1,12 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetLeft="16dp"
-    android:insetTop="16dp"
-    android:insetRight="16dp"
-    android:insetBottom="16dp">
-    <bitmap
-        android:antialias="true"
-        android:filter="true"
-        android:gravity="center"
-        android:src="@drawable/flowna_launcher_logo" />
-</inset>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Foreground mark is intentionally kept inside the 66dp adaptive-icon safe area. -->
+    <path
+        android:fillColor="#FF38BDF8"
+        android:pathData="M32,24h47c0,11 -8,18 -20,18H45c-8,0 -13,5 -13,13V24z" />
+    <path
+        android:fillColor="#FF7C3AED"
+        android:pathData="M32,24h30c-18,3 -28,13 -30,31z" />
+
+    <path
+        android:fillColor="#FF6366F1"
+        android:pathData="M32,50h43c0,10 -8,17 -20,17H45c-8,0 -13,5 -13,13V50z" />
+    <path
+        android:fillColor="#FFA855F7"
+        android:pathData="M32,50h26c-16,3 -24,13 -26,30z" />
+
+    <path
+        android:fillColor="#FFD946EF"
+        android:pathData="M49,62c6,0 10,4 10,10s-4,10 -10,10 -10,-4 -10,-10 4,-10 10,-10z" />
+    <path
+        android:fillColor="#FF9B5CF6"
+        android:pathData="M54,54c0,-6 4,-10 10,-11l8,-2v10l-7,2c-3,1 -4,2 -4,5v14h-7V54z" />
+
+    <path
+        android:fillColor="#55FFFFFF"
+        android:pathData="M42,29h31c-2,4 -6,7 -13,7H47c-6,0 -10,3 -12,8 1,-9 3,-15 7,-15z" />
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M43,55h25c-2,4 -6,6 -13,6H45c-5,0 -9,3 -11,7 1,-8 4,-13 9,-13z" />
+</vector>

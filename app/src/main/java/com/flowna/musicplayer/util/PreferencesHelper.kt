@@ -14,6 +14,9 @@ object PreferencesHelper {
     private const val KEY_LIBRARY_INITIAL_SCAN_COMPLETED = "library_initial_scan_completed"
     private const val KEY_LAST_LIBRARY_SCAN_AT = "last_library_scan_at"
     private const val KEY_FAVORITE_SONGS = "favorite_songs"
+    private const val KEY_RECENT_SEARCHES = "recent_searches"
+    private const val KEY_LAST_PREVIEW_ERROR = "last_preview_error"
+    private const val KEY_LAST_DOWNLOAD_ERROR = "last_download_error"
     private const val AUTO_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
     private var prefs: SharedPreferences? = null
@@ -106,8 +109,52 @@ object PreferencesHelper {
         return isFavorite
     }
 
+    fun getRecentSearches(): List<String> {
+        return prefs?.getString(KEY_RECENT_SEARCHES, null)
+            ?.split("\u001F")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+    }
+
+    fun setRecentSearches(searches: List<String>) {
+        val normalized = searches
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .take(6)
+        prefs?.edit()?.putString(KEY_RECENT_SEARCHES, normalized.joinToString("\u001F"))?.apply()
+    }
+
+    fun clearRecentSearches() {
+        prefs?.edit()?.remove(KEY_RECENT_SEARCHES)?.apply()
+    }
+
     /**
      * Mevcut kalite degerlerinden birini dondurur: "128K", "192K", "320K"
      */
     fun getAvailableQualities(): List<String> = listOf("128K", "192K", "320K")
+
+    fun recordLastPreviewError(message: String) {
+        prefs?.edit()?.putString(KEY_LAST_PREVIEW_ERROR, message.take(240))?.apply()
+    }
+
+    fun getLastPreviewError(): String {
+        return prefs?.getString(KEY_LAST_PREVIEW_ERROR, null).orEmpty()
+    }
+
+    fun recordLastDownloadError(message: String) {
+        prefs?.edit()?.putString(KEY_LAST_DOWNLOAD_ERROR, message.take(240))?.apply()
+    }
+
+    fun getLastDownloadError(): String {
+        return prefs?.getString(KEY_LAST_DOWNLOAD_ERROR, null).orEmpty()
+    }
+
+    fun clearDiagnostics() {
+        prefs?.edit()
+            ?.remove(KEY_LAST_PREVIEW_ERROR)
+            ?.remove(KEY_LAST_DOWNLOAD_ERROR)
+            ?.apply()
+    }
 }

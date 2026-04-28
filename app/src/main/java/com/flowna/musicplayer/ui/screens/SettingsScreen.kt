@@ -60,6 +60,12 @@ import com.flowna.musicplayer.BuildConfig
 import com.flowna.musicplayer.R
 import com.flowna.musicplayer.data.repository.LibraryRepository
 import com.flowna.musicplayer.ui.components.FlownaGradientBackground
+import com.flowna.musicplayer.ui.theme.FlownaBorder
+import com.flowna.musicplayer.ui.theme.FlownaSurface
+import com.flowna.musicplayer.ui.theme.FlownaTextMuted
+import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
+import com.flowna.musicplayer.ui.theme.Lavender100
+import com.flowna.musicplayer.ui.theme.Lavender600
 import com.flowna.musicplayer.util.AppUpdateChecker
 import com.flowna.musicplayer.util.AppUpdateState
 import com.flowna.musicplayer.util.PreferencesHelper
@@ -92,6 +98,8 @@ fun SettingsScreen() {
     var isUpdatingYtDlp by remember { mutableStateOf(false) }
     var isCheckingAppUpdate by remember { mutableStateOf(false) }
     var ytDlpVersionName by remember { mutableStateOf("Bilinmiyor") }
+    var lastPreviewError by remember { mutableStateOf(PreferencesHelper.getLastPreviewError()) }
+    var lastDownloadError by remember { mutableStateOf(PreferencesHelper.getLastDownloadError()) }
 
     LaunchedEffect(Unit) {
         LibraryRepository.ensureInitialized(context)
@@ -127,7 +135,7 @@ fun SettingsScreen() {
                 item(contentType = "appInfo") {
                     AppInfoCard(
                         ytDlpVersionName = ytDlpVersionName,
-                        updateSummary = appUpdateInfo?.summary ?: "Açılışta otomatik kontrol edilir.",
+                        updateSummary = appUpdateInfo?.summary ?: "Açılışta günde bir kez gecikmeli kontrol edilir.",
                         updateAvailable = appUpdateInfo?.updateAvailable == true
                     )
                 }
@@ -156,7 +164,7 @@ fun SettingsScreen() {
                 ) {
                     SettingsActionRow(
                         title = "Uygulama güncellemesi",
-                        subtitle = appUpdateInfo?.summary ?: "Açılışta otomatik kontrol edilir.",
+                        subtitle = appUpdateInfo?.summary ?: "Açılışta günde bir kez gecikmeli kontrol edilir.",
                         buttonLabel = when {
                             isCheckingAppUpdate -> "Bekleyin"
                             appUpdateInfo?.updateAvailable == true && appUpdateInfo?.hasPublishedApk == true -> "Güncelle"
@@ -223,7 +231,7 @@ fun SettingsScreen() {
 
                     SettingsSwitchRow(
                         title = "Otomatik uygulama kontrolü",
-                        subtitle = "Açılışta yeni sürüm denetimi yapar.",
+                        subtitle = "Açılışta günde bir kez gecikmeli sürüm denetimi yapar.",
                         checked = autoAppChecksEnabled,
                         onCheckedChange = { enabled ->
                             autoAppChecksEnabled = enabled
@@ -275,6 +283,22 @@ fun SettingsScreen() {
                 }
             }
 
+                item(contentType = "diagnostics") {
+                    DiagnosticsSection(
+                        lastPreviewError = lastPreviewError,
+                        lastDownloadError = lastDownloadError,
+                        lastScanAt = libraryState.lastScanAt,
+                        onClear = {
+                            PreferencesHelper.clearDiagnostics()
+                            lastPreviewError = ""
+                            lastDownloadError = ""
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Tanılama kayıtları temizlendi.")
+                            }
+                        }
+                    )
+                }
+
                 item(contentType = "about") {
                     SettingsSectionCard(
                         title = "Hakkında",
@@ -317,21 +341,21 @@ private fun SettingsHeader() {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Ayarlar",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground
+                style = MaterialTheme.typography.displayLarge,
+                color = FlownaTextPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "İndirme, oynatma ve uygulama tercihlerini yönet.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = FlownaTextMuted
             )
         }
 
         Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 12.dp
+            shape = RoundedCornerShape(18.dp),
+            color = FlownaSurface,
+            shadowElevation = 4.dp
         ) {
             Image(
                 painter = painterResource(id = R.drawable.flowna_launcher_logo),
@@ -351,21 +375,16 @@ private fun AppInfoCard(
     updateAvailable: Boolean
 ) {
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 12.dp,
-        tonalElevation = 2.dp
+        shape = RoundedCornerShape(20.dp),
+        color = Lavender600,
+        shadowElevation = 4.dp,
+        tonalElevation = 0.dp
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                        )
-                    )
+                    Brush.verticalGradient(listOf(Lavender600, Lavender600.copy(alpha = 0.92f)))
                 )
                 .padding(18.dp)
         ) {
@@ -375,9 +394,9 @@ private fun AppInfoCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 6.dp
+                    shape = RoundedCornerShape(14.dp),
+                    color = FlownaSurface.copy(alpha = 0.22f),
+                    shadowElevation = 0.dp
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.flowna_launcher_logo),
@@ -398,7 +417,7 @@ private fun AppInfoCard(
                             text = "Flowna Music Player",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = FlownaSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -421,7 +440,7 @@ private fun AppInfoCard(
                     Text(
                         text = updateSummary,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = FlownaSurface.copy(alpha = 0.78f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -503,9 +522,9 @@ private fun SettingsSectionCard(
     content: @Composable () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 10.dp,
+        shape = RoundedCornerShape(16.dp),
+        color = FlownaSurface,
+        shadowElevation = 2.dp,
         tonalElevation = 1.dp
     ) {
         Column(
@@ -516,13 +535,13 @@ private fun SettingsSectionCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
+                    color = Lavender100
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         modifier = Modifier.padding(8.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        tint = Lavender600
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -554,8 +573,8 @@ private fun QualitySegmentedControl(
     val qualities = PreferencesHelper.getAvailableQualities()
 
     Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        shape = RoundedCornerShape(10.dp),
+        color = Lavender100
     ) {
         Row(
             modifier = Modifier
@@ -570,9 +589,9 @@ private fun QualitySegmentedControl(
                         .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { onQualitySelected(quality) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
+                        FlownaSurface
                     } else {
                         Color.Transparent
                     }
@@ -584,11 +603,7 @@ private fun QualitySegmentedControl(
                         Text(
                             text = quality,
                             style = MaterialTheme.typography.labelLarge,
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
+                            color = if (isSelected) Lavender600 else FlownaTextMuted
                         )
                     }
                 }
@@ -693,7 +708,7 @@ private fun ActionPillButton(
     Surface(
         modifier = Modifier.clip(CircleShape),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+            color = Lavender100
     ) {
         Row(
             modifier = Modifier
@@ -711,14 +726,14 @@ private fun ActionPillButton(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    tint = Lavender600
                 )
             }
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                color = Lavender600
             )
         }
     }
@@ -753,6 +768,70 @@ private fun SettingsSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+private fun DiagnosticsSection(
+    lastPreviewError: String,
+    lastDownloadError: String,
+    lastScanAt: Long?,
+    onClear: () -> Unit
+) {
+    SettingsSectionCard(
+        title = "Tanılama",
+        subtitle = "Son hata ve durum kayıtlarını hızlı kontrol et.",
+        icon = Icons.Default.Info
+    ) {
+        DiagnosticInfoRow(
+            title = "Paket",
+            value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        )
+        SectionDivider()
+        DiagnosticInfoRow(
+            title = "Son kütüphane taraması",
+            value = lastScanAt?.let(::formatTimestamp) ?: "Henüz kayıt yok"
+        )
+        SectionDivider()
+        DiagnosticInfoRow(
+            title = "Son önizleme hatası",
+            value = lastPreviewError.ifBlank { "Kayıt yok" }
+        )
+        SectionDivider()
+        DiagnosticInfoRow(
+            title = "Son indirme hatası",
+            value = lastDownloadError.ifBlank { "Kayıt yok" }
+        )
+        SectionDivider()
+        SettingsActionRow(
+            title = "Tanılama kayıtları",
+            subtitle = "Son önizleme ve indirme hatasını temizler.",
+            buttonLabel = "Temizle",
+            onClick = onClear
+        )
+    }
+}
+
+@Composable
+private fun DiagnosticInfoRow(
+    title: String,
+    value: String
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -806,19 +885,19 @@ private fun AppMetaRow(
             modifier = Modifier
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary)
+            .background(FlownaSurface.copy(alpha = 0.78f))
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = "$title:",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = FlownaSurface.copy(alpha = 0.78f)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
+            color = FlownaSurface
         )
     }
 }

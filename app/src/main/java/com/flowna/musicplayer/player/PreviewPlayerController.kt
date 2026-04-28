@@ -5,6 +5,8 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,14 +49,6 @@ object PreviewPlayerController {
             isLoading = true,
             track = track,
             errorMessage = null
-        )
-    }
-
-    fun showError(message: String) {
-        _state.value = PreviewPlaybackState(
-            isVisible = true,
-            isLoading = false,
-            errorMessage = message
         )
     }
 
@@ -105,8 +99,19 @@ object PreviewPlayerController {
         scope.cancel()
     }
 
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun getOrCreatePlayer(context: Context): ExoPlayer {
         return player ?: ExoPlayer.Builder(context.applicationContext)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        2_500,
+                        8_000,
+                        250,
+                        500
+                    )
+                    .build()
+            )
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)

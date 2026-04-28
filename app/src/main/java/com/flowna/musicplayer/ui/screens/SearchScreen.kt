@@ -1,5 +1,6 @@
 package com.flowna.musicplayer.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -48,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,7 +70,15 @@ import com.flowna.musicplayer.service.DownloadService
 import com.flowna.musicplayer.ui.components.FlownaGradientBackground
 import com.flowna.musicplayer.ui.components.FlownaPanel
 import com.flowna.musicplayer.ui.components.FlownaSectionHeading
+import com.flowna.musicplayer.ui.theme.FlownaBorder
+import com.flowna.musicplayer.ui.theme.FlownaSurface
+import com.flowna.musicplayer.ui.theme.FlownaTextMuted
+import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
+import com.flowna.musicplayer.ui.theme.FlownaTextSecondary
+import com.flowna.musicplayer.ui.theme.Lavender600
+import com.flowna.musicplayer.util.PreferencesHelper
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,32 +93,43 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
 
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
-    var recentQueries by rememberSaveable {
-        mutableStateOf(
-            listOf("Zeynep Bastık", "Sezen Aksu", "Sagopa Kajmer", "Mabel Matiz", "Mor ve Ötesi")
-        )
-    }
+    var recentQueries by rememberSaveable { mutableStateOf(PreferencesHelper.getRecentSearches()) }
     var isLoading by remember { mutableStateOf(false) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var canLoadMore by remember { mutableStateOf(false) }
+    var currentSearchQuery by rememberSaveable { mutableStateOf("") }
     var hasSearched by remember { mutableStateOf(false) }
     var isLoadingSuggestions by remember { mutableStateOf(false) }
     val suggestions = remember { mutableStateListOf<String>() }
+
+    DisposableEffect(Unit) {
+        onDispose { SearchRepository.cancelPreviewPrefetch() }
+    }
 
     fun performSearch(rawQuery: String = query) {
         val trimmedQuery = rawQuery.trim()
         if (trimmedQuery.isBlank()) return
 
         query = trimmedQuery
-        recentQueries = listOf(trimmedQuery) +
-            recentQueries.filterNot { it.equals(trimmedQuery, ignoreCase = true) }.take(5)
+        currentSearchQuery = trimmedQuery
+        recentQueries = (listOf(trimmedQuery) +
+            recentQueries.filterNot { it.equals(trimmedQuery, ignoreCase = true) }).take(6)
+        PreferencesHelper.setRecentSearches(recentQueries)
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         isLoading = true
+        isLoadingMore = false
+        canLoadMore = false
         hasSearched = true
         suggestions.clear()
 
         scope.launch {
             SearchRepository.search(trimmedQuery)
-                .onSuccess { results = it }
+                .onSuccess { freshResults ->
+                    results = freshResults.distinctBy { it.videoUrl }
+                    canLoadMore = freshResults.isNotEmpty()
+                    resultsListState.scrollToItem(0)
+                }
                 .onFailure {
                     results = emptyList()
                     snackbarHostState.showSnackbar(
@@ -116,6 +138,46 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                 }
             isLoading = false
         }
+    }
+
+    fun loadMoreResults() {
+        val loadQuery = currentSearchQuery.takeIf { it.isNotBlank() } ?: return
+        if (!hasSearched || isLoading || isLoadingMore || !canLoadMore) return
+
+        isLoadingMore = true
+        scope.launch {
+            SearchRepository.searchMore(loadQuery)
+                .onSuccess { moreResults ->
+                    if (moreResults.isEmpty()) {
+                        canLoadMore = false
+                    } else {
+                        results = (results + moreResults).distinctBy { it.videoUrl }
+                    }
+                }
+                .onFailure {
+                    canLoadMore = false
+                    snackbarHostState.showSnackbar(
+                        it.message ?: "Daha fazla sonuç yüklenemedi."
+                    )
+                }
+            isLoadingMore = false
+        }
+    }
+
+    LaunchedEffect(hasSearched, canLoadMore, isLoadingMore, results.size) {
+        if (!hasSearched || !canLoadMore || isLoadingMore || results.isEmpty()) return@LaunchedEffect
+
+        snapshotFlow {
+            val layoutInfo = resultsListState.layoutInfo
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisibleIndex to layoutInfo.totalItemsCount
+        }
+            .distinctUntilChanged()
+            .collect { (lastVisibleIndex, totalItemsCount) ->
+                if (totalItemsCount > 0 && lastVisibleIndex >= totalItemsCount - 4) {
+                    loadMoreResults()
+                }
+            }
     }
 
     LaunchedEffect(query, hasSearched) {
@@ -169,6 +231,7 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                         if (it.isBlank()) {
                             results = emptyList()
                             suggestions.clear()
+                            canLoadMore = false
                         }
                     },
                     placeholder = {
@@ -198,17 +261,17 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                             }
                         }
                     },
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        focusedBorderColor = Lavender600,
+                        unfocusedBorderColor = FlownaBorder,
+                        focusedContainerColor = FlownaSurface,
+                        unfocusedContainerColor = FlownaSurface,
+                        cursorColor = Lavender600,
+                        focusedTextColor = FlownaTextPrimary,
+                        unfocusedTextColor = FlownaTextPrimary,
+                        focusedPlaceholderColor = FlownaTextMuted,
+                        unfocusedPlaceholderColor = FlownaTextMuted
                     )
                 )
 
@@ -239,7 +302,10 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                             modifier = Modifier.weight(1f),
                             recentQueries = recentQueries,
                             onRecentClick = { performSearch(it) },
-                            onClearRecent = { recentQueries = emptyList() }
+                            onClearRecent = {
+                                recentQueries = emptyList()
+                                PreferencesHelper.clearRecentSearches()
+                            }
                         )
                     }
 
@@ -265,7 +331,7 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                                 .weight(1f),
                             state = resultsListState,
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(bottom = 120.dp)
+                            contentPadding = PaddingValues(bottom = 220.dp)
                         ) {
                             item {
                                 Text(
@@ -308,6 +374,21 @@ fun SearchScreen(playerViewModel: PlayerViewModel) {
                                     }
                                 )
                             }
+                            if (isLoadingMore) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 18.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(28.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -328,7 +409,7 @@ private fun SearchDiscoveryBody(
             .fillMaxWidth()
             .fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(bottom = 120.dp)
+        contentPadding = PaddingValues(bottom = 220.dp)
     ) {
         item {
             FlownaPanel(verticalSpacing = 8.dp) {
@@ -450,19 +531,20 @@ private fun SearchChip(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp
+        shape = RoundedCornerShape(20.dp),
+        color = FlownaSurface,
+        border = BorderStroke(1.dp, FlownaBorder),
+        shadowElevation = 2.dp
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                color = FlownaTextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -476,105 +558,114 @@ private fun SearchResultItem(
     onPreview: () -> Unit,
     onDownload: () -> Unit
 ) {
-    LaunchedEffect(result.videoUrl) {
-        SearchRepository.prefetchPreviews(listOf(result))
-    }
-
-    FlownaPanel(verticalSpacing = 14.dp) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = FlownaSurface,
+        border = BorderStroke(1.dp, FlownaBorder),
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(90.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .clickable(onClick = onPreview)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
-                    model = result.thumbnailUrl,
-                    contentDescription = result.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp)
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)),
-                    contentAlignment = Alignment.Center
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onPreview)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Önizle",
-                        tint = MaterialTheme.colorScheme.onPrimary
+                    AsyncImage(
+                        model = result.thumbnailUrl,
+                        contentDescription = result.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(5.dp)
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(Lavender600.copy(alpha = 0.94f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Önizle",
+                            tint = FlownaSurface,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = result.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = FlownaTextPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = result.uploaderName.ifBlank { "Bilinmeyen sanatçı" },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = FlownaTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Text(
+                        text = formatDuration(result.duration),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = FlownaTextMuted
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = result.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = result.uploaderName.ifBlank { "Bilinmeyen sanatçı" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = formatDuration(result.duration),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            FilledTonalButton(
-                onClick = onPreview,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(18.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Önizle"
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Önizle",
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+                FilledTonalButton(
+                    onClick = onPreview,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Önizle",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Önizle",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
 
-            FilledTonalButton(
-                onClick = onDownload,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "İndir"
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "İndir",
-                    fontWeight = FontWeight.SemiBold
-                )
+                FilledTonalButton(
+                    onClick = onDownload,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "İndir",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "İndir",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

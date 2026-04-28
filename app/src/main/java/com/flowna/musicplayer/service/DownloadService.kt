@@ -389,6 +389,14 @@ class DownloadService : Service() {
     private fun ensureLibrariesReady() {
         YoutubeDL.getInstance().init(this)
         FFmpeg.getInstance().init(this)
+        if (PreferencesHelper.shouldCheckForYtDlpUpdate()) {
+            runCatching {
+                YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel._STABLE)
+            }.onFailure { error ->
+                Log.w(TAG, "Günlük yt-dlp kontrolü tamamlanamadı", error)
+            }
+            PreferencesHelper.markYtDlpUpdateChecked()
+        }
     }
 
     private fun sanitizeTitle(title: String): String {
@@ -458,6 +466,8 @@ class DownloadService : Service() {
             return runCatching {
                 context.startForegroundService(intent)
                 resolvedDownloadId
+            }.onFailure { error ->
+                PreferencesHelper.recordLastDownloadError(error.message ?: "İndirme servisi başlatılamadı.")
             }
         }
     }

@@ -203,6 +203,24 @@ object MediaStoreHelper {
         return false
     }
 
+    fun renameSong(context: Context, song: FlownaSong, newTitle: String): FlownaSong? {
+        val safeTitle = sanitizeDisplayText(newTitle)?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+        val values = ContentValues().apply {
+            put(MediaStore.Audio.Media.TITLE, safeTitle)
+            put(MediaStore.Audio.Media.DISPLAY_NAME, "$safeTitle.mp3")
+        }
+
+        val updatedRows = context.contentResolver.update(song.uri, values, null, null)
+        if (updatedRows <= 0) return null
+
+        return querySongByUri(context, song.uri) ?: song.copy(title = safeTitle)
+    }
+
+    fun deleteSong(context: Context, song: FlownaSong): Boolean {
+        return context.contentResolver.delete(song.uri, null, null) > 0
+    }
+
     private fun shouldIncludeSong(
         duration: Long,
         storagePath: String,

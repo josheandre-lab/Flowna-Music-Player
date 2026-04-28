@@ -88,11 +88,11 @@ object RecommendationEngine {
             if (song.uri.toString() in recentlyPlayedUris) score -= 1.25
 
             val reason = when {
-                song.artist in preferredArtists -> "Ayni sanatci"
-                fingerprint.genreTag in preferredGenres -> "Benzer tur"
+                song.artist in preferredArtists -> "Aynı sanatçı"
+                fingerprint.genreTag in preferredGenres -> "Benzer tür"
                 fingerprint.moodTag in preferredMoods -> "Benzer mood"
                 fingerprint.tempoBucket in preferredTempo -> "Benzer tempo"
-                else -> "Kutuphane secimi"
+                else -> "Kütüphane seçimi"
             }
             Triple(song, score, reason)
         }
@@ -127,20 +127,23 @@ object RecommendationEngine {
 
         val candidates = mutableListOf<OnlineRecommendationEntity>()
         seeds.forEach { seed ->
-            SearchRepository.search(seed)
+            SearchRepository.search(seed, warmPreview = false)
                 .onSuccess { items ->
-                    items.take(4).forEach { item ->
-                        candidates += OnlineRecommendationEntity(
-                            videoId = item.videoId.ifBlank { item.videoUrl },
-                            videoUrl = item.videoUrl,
-                            title = item.title,
-                            artist = item.uploaderName,
-                            thumbnailUrl = item.thumbnailUrl,
-                            durationSeconds = item.duration,
-                            sourceSeed = seed,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                    }
+                    items
+                        .filter { it.duration in 45..900 }
+                        .take(4)
+                        .forEach { item ->
+                            candidates += OnlineRecommendationEntity(
+                                videoId = item.videoId.ifBlank { item.videoUrl },
+                                videoUrl = item.videoUrl,
+                                title = item.title,
+                                artist = item.uploaderName,
+                                thumbnailUrl = item.thumbnailUrl,
+                                durationSeconds = item.duration,
+                                sourceSeed = seed,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        }
                 }
         }
 

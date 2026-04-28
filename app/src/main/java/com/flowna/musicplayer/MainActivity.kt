@@ -1,5 +1,7 @@
 package com.flowna.musicplayer
 
+import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,44 +20,89 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.flowna.musicplayer.player.PlayerViewModel
 import com.flowna.musicplayer.ui.FlownaNavHost
+import com.flowna.musicplayer.ui.components.FlownaSplashScreen
 import com.flowna.musicplayer.ui.theme.FlownaTheme
 import com.flowna.musicplayer.util.PermissionHelper
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureSystemBars()
         setContent {
             FlownaTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    var hasPermissions by remember {
-                        mutableStateOf(PermissionHelper.hasAllPermissions(this@MainActivity))
-                    }
+                var showSplash by rememberSaveable { mutableStateOf(true) }
 
-                    if (hasPermissions) {
-                        val playerViewModel: PlayerViewModel = viewModel()
-                        FlownaNavHost(playerViewModel = playerViewModel)
+                LaunchedEffect(showSplash) {
+                    if (showSplash) {
+                        configureSplashSystemBars()
                     } else {
-                        PermissionScreen(
-                            missingPermissions = PermissionHelper.getMissingPermissions(this@MainActivity),
-                            onPermissionsGranted = { hasPermissions = true }
-                        )
+                        configureSystemBars()
+                    }
+                }
+
+                if (showSplash) {
+                    FlownaSplashScreen(onFinished = { showSplash = false })
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        var hasPermissions by remember {
+                            mutableStateOf(PermissionHelper.hasAllPermissions(this@MainActivity))
+                        }
+
+                        if (hasPermissions) {
+                            val playerViewModel: PlayerViewModel = viewModel()
+                            FlownaNavHost(playerViewModel = playerViewModel)
+                        } else {
+                            PermissionScreen(
+                                missingPermissions = PermissionHelper.getMissingPermissions(this@MainActivity),
+                                onPermissionsGranted = { hasPermissions = true }
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+
+    private fun configureSplashSystemBars() {
+        val surfaceColor = AndroidColor.parseColor("#0D0F1A")
+        window.statusBarColor = surfaceColor
+        window.navigationBarColor = surfaceColor
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+
+    private fun configureSystemBars() {
+        val surfaceColor = AndroidColor.parseColor("#F7F2FB")
+        window.statusBarColor = surfaceColor
+        window.navigationBarColor = surfaceColor
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
         }
     }
 }
@@ -68,8 +115,7 @@ private fun PermissionScreen(
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.values.all { it }
-        if (allGranted) {
+        if (permissions.values.all { it }) {
             onPermissionsGranted()
         }
     }

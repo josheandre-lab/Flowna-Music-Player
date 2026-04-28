@@ -3,7 +3,9 @@ package com.flowna.musicplayer
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ComponentCallbacks2
 import android.util.Log
+import com.flowna.musicplayer.data.repository.SearchRepository
 import com.flowna.musicplayer.util.PreferencesHelper
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -15,6 +17,13 @@ class FlownaApp : Application() {
         PreferencesHelper.init(this)
         createNotificationChannels()
         initLibraries()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            SearchRepository.clearPreviewMemoryCache()
+        }
     }
 
     private fun createNotificationChannels() {

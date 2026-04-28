@@ -34,9 +34,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.flowna.musicplayer.ui.theme.FlownaBorder
+import com.flowna.musicplayer.ui.theme.FlownaSurface
+import com.flowna.musicplayer.ui.theme.FlownaTextMuted
+import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
+import com.flowna.musicplayer.ui.theme.FlownaTextSecondary
+import com.flowna.musicplayer.ui.theme.Lavender100
+import com.flowna.musicplayer.ui.theme.Lavender300
+import com.flowna.musicplayer.ui.theme.Lavender600
 
-private val FlownaPanelShape = RoundedCornerShape(28.dp)
+private val FlownaPanelShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun FlownaGradientBackground(
@@ -47,9 +56,9 @@ fun FlownaGradientBackground(
         modifier = modifier.background(
             Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFFF8F5FA),
+                    Color(0xFFFFFCFF),
                     MaterialTheme.colorScheme.background,
-                    Color(0xFFF1EDF6)
+                    Color(0xFFF3F0FF)
                 )
             )
         )
@@ -60,11 +69,11 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.09f),
                             Color.Transparent
                         ),
                         center = Offset(180f, 140f),
-                        radius = 680f
+                        radius = 760f
                     )
                 )
         )
@@ -74,7 +83,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.09f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.07f),
                             Color.Transparent
                         ),
                         center = Offset(920f, 1380f),
@@ -88,7 +97,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.72f),
+                            Color.White.copy(alpha = 0.82f),
                             Color.Transparent
                         ),
                         center = Offset(520f, 240f),
@@ -109,23 +118,16 @@ fun FlownaPanel(
     Surface(
         modifier = modifier,
         shape = FlownaPanelShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
+        color = FlownaSurface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 14.dp,
+        shadowElevation = 3.dp,
         tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                        )
-                    )
-                )
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .background(FlownaSurface)
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(verticalSpacing),
             content = content
         )
@@ -147,22 +149,15 @@ fun FlownaSectionHeading(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.displayLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Box(
-                modifier = Modifier
-                    .padding(top = 8.dp, bottom = 2.dp)
-                    .width(54.dp)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                color = FlownaTextPrimary
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f)
+                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = FlownaTextMuted
             )
         }
         Row(
@@ -178,7 +173,9 @@ fun FlownaCircleIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    accent: Boolean = false
+    accent: Boolean = false,
+    size: Dp = 42.dp,
+    iconSize: Dp = 22.dp
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -186,15 +183,15 @@ fun FlownaCircleIconButton(
         modifier = modifier,
         shape = CircleShape,
         color = if (accent) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+            Lavender100
         } else {
-            MaterialTheme.colorScheme.surface
+            FlownaSurface
         },
-        shadowElevation = if (accent) 14.dp else 12.dp
+        shadowElevation = 5.dp
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(size)
                 .graphicsLayer {
                     val scale = if (pressed) 0.94f else 1f
                     scaleX = scale
@@ -210,10 +207,11 @@ fun FlownaCircleIconButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
+                modifier = Modifier.size(iconSize),
                 tint = if (accent) {
-                    MaterialTheme.colorScheme.primary
+                    Lavender600
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    FlownaTextPrimary
                 }
             )
         }
@@ -229,15 +227,15 @@ fun FlownaSegmentedTabs(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-        shadowElevation = 8.dp
+        shape = RoundedCornerShape(12.dp),
+        color = Lavender100,
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(5.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             items.forEachIndexed { index, item ->
                 val selected = index == selectedIndex
@@ -251,13 +249,13 @@ fun FlownaSegmentedTabs(
                             scaleX = scale
                             scaleY = scale
                         }
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(
                             if (selected) {
                                 Brush.horizontalGradient(
                                     colors = listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)
+                                        FlownaSurface,
+                                        FlownaSurface
                                     )
                                 )
                             } else {
@@ -270,16 +268,16 @@ fun FlownaSegmentedTabs(
                             interactionSource = interactionSource,
                             indication = null
                         ) { onSelect(index) }
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = item,
                         style = MaterialTheme.typography.labelLarge,
                         color = if (selected) {
-                            MaterialTheme.colorScheme.onPrimary
+                            Lavender600
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            FlownaTextMuted
                         }
                     )
                 }
@@ -302,7 +300,7 @@ fun FlownaStatusBadge(
     val contentColor = if (active) {
         MaterialTheme.colorScheme.tertiary
     } else {
-        MaterialTheme.colorScheme.primary
+            MaterialTheme.colorScheme.primary
     }
 
     Surface(

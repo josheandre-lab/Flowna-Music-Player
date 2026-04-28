@@ -1,11 +1,14 @@
 package com.flowna.musicplayer.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +36,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.flowna.musicplayer.player.PlayerViewModel
+import com.flowna.musicplayer.ui.theme.FlownaBorder
+import com.flowna.musicplayer.ui.theme.FlownaSurface
+import com.flowna.musicplayer.ui.theme.FlownaTextMuted
+import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
+import com.flowna.musicplayer.ui.theme.Lavender100
+import com.flowna.musicplayer.ui.theme.Lavender600
 
 @Composable
 fun PreviewPlayerBar(
@@ -44,18 +53,31 @@ fun PreviewPlayerBar(
 
     if (!previewState.isVisible || previewState.errorMessage != null) return
 
-    FlownaPanel(
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        verticalSpacing = 7.dp
+        shape = RoundedCornerShape(24.dp),
+        color = FlownaSurface,
+        shadowElevation = 8.dp
     ) {
+    Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .size(width = 36.dp, height = 4.dp)
+                .clip(CircleShape)
+                .background(FlownaBorder)
+        )
         LinearProgressIndicator(
             progress = { previewState.progress },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(3.dp)
                 .clip(CircleShape),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.primaryContainer
+            color = Lavender600,
+            trackColor = Lavender100
         )
 
         Row(
@@ -64,22 +86,22 @@ fun PreviewPlayerBar(
         ) {
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
+                color = Lavender100
             ) {
                 if (track?.artworkUrl?.isNotBlank() == true) {
                     AsyncImage(
                         model = track.artworkUrl,
                         contentDescription = track.title,
                         modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(15.dp)),
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(12.dp)),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Surface(
-                        modifier = Modifier.size(48.dp),
-                        shape = RoundedCornerShape(15.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Lavender100
                     ) {}
                 }
             }
@@ -97,7 +119,7 @@ fun PreviewPlayerBar(
                         else -> track?.title ?: "Önizleme"
                     },
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = FlownaTextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -107,8 +129,8 @@ fun PreviewPlayerBar(
                         previewState.errorMessage != null -> previewState.errorMessage.orEmpty()
                         else -> track?.artist?.ifBlank { "Online öneri" } ?: "Online öneri"
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = FlownaTextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -116,24 +138,24 @@ fun PreviewPlayerBar(
 
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                color = Lavender600
             ) {
                 IconButton(
                     onClick = { playerViewModel.togglePreviewPlayPause() },
                     enabled = !previewState.isLoading && previewState.errorMessage == null && track != null,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     if (previewState.isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
+                            color = FlownaSurface
                         )
                     } else {
                         Icon(
                             imageVector = if (previewState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (previewState.isPlaying) "Duraklat" else "Çal",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = FlownaSurface
                         )
                     }
                 }
@@ -141,36 +163,37 @@ fun PreviewPlayerBar(
 
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
+                color = Lavender100
             ) {
                 IconButton(
                     onClick = { playerViewModel.downloadPreviewTrack() },
                     enabled = !previewState.isLoading && previewState.errorMessage == null && track != null,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Download,
                         contentDescription = "İndir",
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = Lavender600
                     )
                 }
             }
 
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
+                color = Lavender100
             ) {
                 IconButton(
                     onClick = { playerViewModel.stopPreviewAndRestore() },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Kapat",
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = FlownaTextMuted
                     )
                 }
             }
         }
+    }
     }
 }

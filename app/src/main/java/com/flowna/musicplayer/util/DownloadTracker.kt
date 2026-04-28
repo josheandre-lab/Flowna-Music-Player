@@ -66,6 +66,9 @@ object DownloadTracker {
         statusMessage: String? = null,
         errorMessage: String? = null
     ) {
+        if (status == DownloadStatus.FAILED && !errorMessage.isNullOrBlank()) {
+            PreferencesHelper.recordLastDownloadError(errorMessage)
+        }
         _downloads.update { list ->
             list.map {
                 if (it.id == id) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -48,8 +50,15 @@ import com.flowna.musicplayer.ui.screens.LibraryScreen
 import com.flowna.musicplayer.ui.screens.PlayerScreen
 import com.flowna.musicplayer.ui.screens.SearchScreen
 import com.flowna.musicplayer.ui.screens.SettingsScreen
+import com.flowna.musicplayer.ui.theme.FlownaBorder
+import com.flowna.musicplayer.ui.theme.FlownaSurface
+import com.flowna.musicplayer.ui.theme.FlownaTextMuted
+import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
+import com.flowna.musicplayer.ui.theme.Lavender100
+import com.flowna.musicplayer.ui.theme.Lavender600
 import com.flowna.musicplayer.util.AppUpdateChecker
 import com.flowna.musicplayer.util.AppUpdateState
+import kotlinx.coroutines.delay
 
 sealed class FlownaScreen(
     val route: String,
@@ -84,6 +93,11 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
         LibraryRepository.ensureInitialized(context)
     }
 
+    LaunchedEffect(Unit) {
+        delay(1_500)
+        AppUpdateChecker.check(force = false)
+    }
+
     LaunchedEffect(updateInfo?.checkedAtMillis) {
         if (updateInfo?.updateAvailable == true) {
             showUpdateDialog = true
@@ -97,15 +111,19 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
                 Column(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 0.dp, vertical = 0.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     if (previewState.isVisible) {
-                        PreviewPlayerBar(playerViewModel = playerViewModel)
+                        PreviewPlayerBar(
+                            playerViewModel = playerViewModel,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
                     } else {
                         BottomPlayerBar(
                             playerViewModel = playerViewModel,
-                            onOpenPlayer = { navController.navigate(FlownaScreen.Player.route) }
+                            onOpenPlayer = { navController.navigate(FlownaScreen.Player.route) },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
 
@@ -190,24 +208,17 @@ private fun FlownaBottomNavigation(
     currentRoute: String?,
     onSelect: (FlownaScreen) -> Unit
 ) {
-    Surface(
-        shape = RoundedCornerShape(30.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        shadowElevation = 14.dp
-    ) {
+    Column {
+        HorizontalDivider(color = FlownaBorder, thickness = 1.dp)
+        Surface(
+            color = FlownaSurface,
+            shadowElevation = 0.dp
+        ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)
-                        )
-                    )
-                )
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceAround
         ) {
             navigationItems.forEach { screen ->
                 val selected = currentRoute == screen.route
@@ -216,45 +227,39 @@ private fun FlownaBottomNavigation(
                         .weight(1f)
                         .background(
                             if (selected) {
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                    )
-                                )
+                                Brush.horizontalGradient(listOf(Lavender100, Lavender100))
                             } else {
-                                Brush.horizontalGradient(
-                                    colors = listOf(Color.Transparent, Color.Transparent)
-                                )
+                                Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
                             },
-                            shape = RoundedCornerShape(22.dp)
+                            shape = RoundedCornerShape(20.dp)
                         )
                         .clickable { onSelect(screen) }
-                        .padding(vertical = 11.dp),
+                        .padding(vertical = 7.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
                         imageVector = screen.icon,
                         contentDescription = screen.title,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(22.dp),
                         tint = if (selected) {
-                            MaterialTheme.colorScheme.primary
+                            Lavender600
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            FlownaTextMuted
                         }
                     )
                     Text(
                         text = screen.title,
                         style = MaterialTheme.typography.labelMedium,
                         color = if (selected) {
-                            MaterialTheme.colorScheme.onSurface
+                            FlownaTextPrimary
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            FlownaTextMuted
                         }
                     )
                 }
             }
+        }
         }
     }
 }
