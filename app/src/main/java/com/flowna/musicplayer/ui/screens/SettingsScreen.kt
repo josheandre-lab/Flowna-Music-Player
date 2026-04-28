@@ -56,7 +56,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.flowna.musicplayer.BuildConfig
 import com.flowna.musicplayer.R
 import com.flowna.musicplayer.data.repository.LibraryRepository
 import com.flowna.musicplayer.ui.components.FlownaGradientBackground
@@ -68,6 +67,8 @@ import com.flowna.musicplayer.ui.theme.Lavender100
 import com.flowna.musicplayer.ui.theme.Lavender600
 import com.flowna.musicplayer.util.AppUpdateChecker
 import com.flowna.musicplayer.util.AppUpdateState
+import com.flowna.musicplayer.util.AppVersionProvider
+import com.flowna.musicplayer.util.InstalledAppVersion
 import com.flowna.musicplayer.util.PreferencesHelper
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDL.UpdateStatus
@@ -87,6 +88,7 @@ fun SettingsScreen() {
     val appUpdateInfo by AppUpdateState.info.collectAsStateWithLifecycle()
     val libraryState by LibraryRepository.state.collectAsStateWithLifecycle()
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val appVersion = remember(context) { AppVersionProvider.get(context) }
 
     var selectedQuality by rememberSaveable { mutableStateOf(PreferencesHelper.getAudioQuality()) }
     var autoAppChecksEnabled by rememberSaveable {
@@ -134,6 +136,7 @@ fun SettingsScreen() {
 
                 item(contentType = "appInfo") {
                     AppInfoCard(
+                        appVersion = appVersion,
                         ytDlpVersionName = ytDlpVersionName,
                         updateSummary = appUpdateInfo?.summary ?: "Açılışta günde bir kez gecikmeli kontrol edilir.",
                         updateAvailable = appUpdateInfo?.updateAvailable == true
@@ -174,7 +177,7 @@ fun SettingsScreen() {
                         onClick = {
                             scope.launch {
                                 isCheckingAppUpdate = true
-                                val result = AppUpdateChecker.check(force = true)
+                                val result = AppUpdateChecker.check(context = context, force = true)
                                 isCheckingAppUpdate = false
 
                                 result.onSuccess { info ->
@@ -285,6 +288,7 @@ fun SettingsScreen() {
 
                 item(contentType = "diagnostics") {
                     DiagnosticsSection(
+                        appVersion = appVersion,
                         lastPreviewError = lastPreviewError,
                         lastDownloadError = lastDownloadError,
                         lastScanAt = libraryState.lastScanAt,
@@ -307,7 +311,7 @@ fun SettingsScreen() {
                     ) {
                         SettingsInfoRow(
                             title = "Uygulama sürümü",
-                            value = BuildConfig.VERSION_NAME
+                            value = appVersion.name
                         )
                         SectionDivider()
                         SettingsInfoRow(
@@ -370,6 +374,7 @@ private fun SettingsHeader() {
 
 @Composable
 private fun AppInfoCard(
+    appVersion: InstalledAppVersion,
     ytDlpVersionName: String,
     updateSummary: String,
     updateAvailable: Boolean
@@ -429,7 +434,7 @@ private fun AppInfoCard(
 
                     AppMetaRow(
                         title = "Uygulama sürümü",
-                        value = BuildConfig.VERSION_NAME
+                        value = appVersion.name
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     AppMetaRow(
@@ -774,6 +779,7 @@ private fun SettingsSwitchRow(
 
 @Composable
 private fun DiagnosticsSection(
+    appVersion: InstalledAppVersion,
     lastPreviewError: String,
     lastDownloadError: String,
     lastScanAt: Long?,
@@ -786,7 +792,7 @@ private fun DiagnosticsSection(
     ) {
         DiagnosticInfoRow(
             title = "Paket",
-            value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+            value = appVersion.display
         )
         SectionDivider()
         DiagnosticInfoRow(

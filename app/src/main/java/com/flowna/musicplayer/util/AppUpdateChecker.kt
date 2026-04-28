@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import com.flowna.musicplayer.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -12,7 +11,6 @@ import org.json.JSONObject
 import java.io.FileNotFoundException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.time.Instant
 
 object AppUpdateChecker {
 
@@ -21,16 +19,16 @@ object AppUpdateChecker {
     private const val RELEASES_PAGE_URL = "https://github.com/josheandre-lab/Flowna-Music-Player/releases"
     private const val REPO_PAGE_URL = "https://github.com/josheandre-lab/Flowna-Music-Player"
 
-    suspend fun check(force: Boolean = false): Result<AppUpdateInfo> = withContext(Dispatchers.IO) {
+    suspend fun check(context: Context, force: Boolean = false): Result<AppUpdateInfo> = withContext(Dispatchers.IO) {
         runCatching {
             if (!force && !PreferencesHelper.shouldCheckForAppUpdate()) {
                 AppUpdateState.info.value?.let { return@runCatching it }
             }
+            val installedVersion = AppVersionProvider.get(context)
 
             val repoJson = fetchJson(REPO_API_URL)
             val pushedAt = repoJson.optString("pushed_at")
             val repoHtmlUrl = repoJson.optString("html_url").ifBlank { REPO_PAGE_URL }
-            val latestCommitInstant = pushedAt.takeIf { it.isNotBlank() }?.let(Instant::parse)
 
             val releaseJson = fetchJsonOrNull("$REPO_API_URL/releases/latest")
             val releaseTitle = releaseJson?.optString("tag_name")
@@ -46,8 +44,8 @@ object AppUpdateChecker {
             val hasPublishedApk = !releaseAssetUrl.isNullOrBlank()
             val latestTitle = releaseTitle
             val updateAvailable = when {
-                releaseJson != null -> compareVersionNames(releaseTitle, BuildConfig.VERSION_NAME) > 0
-                latestCommitInstant != null -> latestCommitInstant.toEpochMilli() > BuildConfig.BUILD_TIME_UTC
+                releaseJson != null -> compareVersionNames(releaseTitle, installedVersion.name) > 0
+                pushedAt.isNotBlank() -> false
                 else -> false
             }
 

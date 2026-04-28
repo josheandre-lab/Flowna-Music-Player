@@ -22,8 +22,8 @@ android {
         applicationId = "com.flowna.musicplayer"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.0.5"
+        versionCode = 7
+        versionName = "1.0.6"
         buildConfigField("long", "BUILD_TIME_UTC", "${System.currentTimeMillis()}L")
 
         ndk {

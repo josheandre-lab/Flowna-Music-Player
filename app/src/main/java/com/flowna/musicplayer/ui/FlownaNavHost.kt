@@ -95,7 +95,7 @@ fun FlownaNavHost(playerViewModel: PlayerViewModel) {
 
     LaunchedEffect(Unit) {
         delay(1_500)
-        AppUpdateChecker.check(force = false)
+        AppUpdateChecker.check(context = context, force = false)
     }
 
     LaunchedEffect(updateInfo?.checkedAtMillis) {
