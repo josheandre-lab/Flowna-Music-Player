@@ -14,3 +14,20 @@ cd capacitor-ui
 npm install
 npm run cap:sync
 ```
+
+Bu ortamda dogrulanan durum:
+- `npm install` basarili.
+- `npm run cap:add:android` basarili.
+- `npm run cap:sync` basarili.
+- `capacitor-ui/android/gradlew.bat assembleDebug` basarili.
+
+Debug APK:
+
+```text
+capacitor-ui/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Uyari:
+- Bu APK yalnizca HTML arayuz prototipidir.
+- Paket adi mevcut uygulamayla ayni oldugu icin kurulumda mevcut release ile signature/versionCode cakismasi olabilir.
+- Native Media3 player, yt-dlp indirme, kutuphane tarama ve update akislarini bu WebView arayuzune baglamak icin Capacitor plugin/bridge katmani yazilmalidir.
