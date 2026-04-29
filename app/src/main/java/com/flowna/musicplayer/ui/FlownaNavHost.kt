@@ -66,7 +66,7 @@ sealed class FlownaScreen(
     val icon: ImageVector
 ) {
     data object Search : FlownaScreen("search", "Ara", Icons.Default.Search)
-    data object Downloads : FlownaScreen("downloads", "İndirmeler", Icons.Default.Download)
+    data object Downloads : FlownaScreen("downloads", "İndirme", Icons.Default.Download)
     data object Library : FlownaScreen("library", "Kütüphane", Icons.Default.LibraryMusic)
     data object Settings : FlownaScreen("settings", "Ayarlar", Icons.Default.Settings)
     data object Player : FlownaScreen("player", "Çalıyor", Icons.Default.LibraryMusic)
@@ -211,13 +211,13 @@ private fun FlownaBottomNavigation(
     Column {
         HorizontalDivider(color = FlownaBorder, thickness = 1.dp)
         Surface(
-            color = FlownaSurface,
-            shadowElevation = 0.dp
+            color = FlownaSurface.copy(alpha = 0.96f),
+            shadowElevation = 10.dp
         ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
+                .padding(horizontal = 8.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
             navigationItems.forEach { screen ->
@@ -231,7 +231,7 @@ private fun FlownaBottomNavigation(
                             } else {
                                 Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
                             },
-                            shape = RoundedCornerShape(20.dp)
+                            shape = RoundedCornerShape(14.dp)
                         )
                         .clickable { onSelect(screen) }
                         .padding(vertical = 7.dp),

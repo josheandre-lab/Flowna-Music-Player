@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -71,10 +72,12 @@ import com.flowna.musicplayer.ui.components.FlownaGradientBackground
 import com.flowna.musicplayer.ui.components.FlownaPanel
 import com.flowna.musicplayer.ui.components.FlownaSectionHeading
 import com.flowna.musicplayer.ui.theme.FlownaBorder
+import com.flowna.musicplayer.ui.theme.FlownaSuccess
 import com.flowna.musicplayer.ui.theme.FlownaSurface
 import com.flowna.musicplayer.ui.theme.FlownaTextMuted
 import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
 import com.flowna.musicplayer.ui.theme.FlownaTextSecondary
+import com.flowna.musicplayer.ui.theme.Lavender100
 import com.flowna.musicplayer.ui.theme.Lavender600
 import com.flowna.musicplayer.util.PreferencesHelper
 import kotlinx.coroutines.delay
@@ -559,13 +562,13 @@ private fun SearchResultItem(
     onDownload: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         color = FlownaSurface,
         border = BorderStroke(1.dp, FlownaBorder),
         shadowElevation = 2.dp
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
@@ -574,8 +577,8 @@ private fun SearchResultItem(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable(onClick = onPreview)
                 ) {
                     AsyncImage(
@@ -588,7 +591,7 @@ private fun SearchResultItem(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(5.dp)
-                            .size(20.dp)
+                            .size(22.dp)
                             .clip(CircleShape)
                             .background(Lavender600.copy(alpha = 0.94f)),
                         contentAlignment = Alignment.Center
@@ -597,7 +600,7 @@ private fun SearchResultItem(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Önizle",
                             tint = FlownaSurface,
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
@@ -609,7 +612,7 @@ private fun SearchResultItem(
                         text = result.title,
                         style = MaterialTheme.typography.titleMedium,
                         color = FlownaTextPrimary,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
@@ -636,7 +639,11 @@ private fun SearchResultItem(
                 FilledTonalButton(
                     onClick = onPreview,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Lavender100,
+                        contentColor = Lavender600
+                    )
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
@@ -653,7 +660,11 @@ private fun SearchResultItem(
                 FilledTonalButton(
                     onClick = onDownload,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = FlownaSuccess.copy(alpha = 0.12f),
+                        contentColor = FlownaSuccess
+                    )
                 ) {
                     Icon(
                         imageVector = Icons.Default.Download,

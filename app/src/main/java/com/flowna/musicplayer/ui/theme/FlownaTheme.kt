@@ -9,24 +9,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-val Lavender50 = Color(0xFFF5F3FF)
-val Lavender100 = Color(0xFFEDE9FE)
-val Lavender200 = Color(0xFFDDD6FE)
-val Lavender300 = Color(0xFFC4B5FD)
-val Lavender400 = Color(0xFFA78BFA)
-val Lavender500 = Color(0xFF8B5CF6)
-val Lavender600 = Color(0xFF7C3AED)
-val Lavender700 = Color(0xFF6D28D9)
-val Lavender800 = Color(0xFF5B21B6)
-val Lavender900 = Color(0xFF4C1D95)
+val Lavender50 = Color(0xFFFFF7F4)
+val Lavender100 = Color(0xFFFFF0EC)
+val Lavender200 = Color(0xFFFFD6CC)
+val Lavender300 = Color(0xFFFFB49F)
+val Lavender400 = Color(0xFFFF8A6E)
+val Lavender500 = Color(0xFFFF795E)
+val Lavender600 = Color(0xFFFF6B4A)
+val Lavender700 = Color(0xFFE65232)
+val Lavender800 = Color(0xFFBF3F25)
+val Lavender900 = Color(0xFF8F2D1B)
 
-val FlownaBackground = Color(0xFFF8F7FF)
+val FlownaBackground = Color(0xFFF7F4F0)
 val FlownaSurface = Color(0xFFFFFFFF)
-val FlownaBorder = Color(0xFFE8E4F8)
-val FlownaTextPrimary = Color(0xFF2D1B69)
-val FlownaTextSecondary = Color(0xFF6B5B95)
-val FlownaTextMuted = Color(0xFF9D8EC0)
-val FlownaSuccess = Color(0xFF22C55E)
+val FlownaBorder = Color(0xFFEDE7DF)
+val FlownaTextPrimary = Color(0xFF1A1A2E)
+val FlownaTextSecondary = Color(0xFF6B7280)
+val FlownaTextMuted = Color(0xFFA0ADB8)
+val FlownaSuccess = Color(0xFF00C896)
 val FlownaWarning = Color(0xFFF59E0B)
 val FlownaError = Color(0xFFEF4444)
 
@@ -41,8 +41,8 @@ private val FlownaColors = lightColorScheme(
     onSecondaryContainer = FlownaTextPrimary,
     tertiary = FlownaSuccess,
     onTertiary = FlownaSurface,
-    tertiaryContainer = Color(0xFFE9FBEF),
-    onTertiaryContainer = Color(0xFF166534),
+    tertiaryContainer = Color(0xFFE6FAF5),
+    onTertiaryContainer = Color(0xFF007A5C),
     background = FlownaBackground,
     onBackground = FlownaTextPrimary,
     surface = FlownaSurface,
@@ -53,15 +53,15 @@ private val FlownaColors = lightColorScheme(
     onError = FlownaSurface,
     outline = FlownaBorder,
     outlineVariant = Lavender200,
-    scrim = Color(0x332D1B69)
+    scrim = Color(0x331A1A2E)
 )
 
 val FlownaTypography = Typography(
     displayLarge = TextStyle(
-        fontSize = 28.sp,
-        fontWeight = FontWeight.Bold,
+        fontSize = 30.sp,
+        fontWeight = FontWeight.ExtraBold,
         lineHeight = 34.sp,
-        letterSpacing = (-0.5).sp
+        letterSpacing = (-0.8).sp
     ),
     headlineLarge = TextStyle(
         fontSize = 28.sp,

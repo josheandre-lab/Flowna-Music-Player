@@ -1,6 +1,7 @@
 package com.flowna.musicplayer.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,15 +32,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.flowna.musicplayer.player.PlayerViewModel
-import com.flowna.musicplayer.ui.theme.FlownaBorder
 import com.flowna.musicplayer.ui.theme.FlownaSurface
 import com.flowna.musicplayer.ui.theme.FlownaTextMuted
 import com.flowna.musicplayer.ui.theme.FlownaTextPrimary
-import com.flowna.musicplayer.ui.theme.Lavender100
 import com.flowna.musicplayer.ui.theme.Lavender600
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -63,12 +64,21 @@ fun BottomPlayerBar(
             modifier = modifier
                 .fillMaxWidth()
                 .clickable(onClick = onOpenPlayer),
-            shape = RoundedCornerShape(16.dp),
-            color = FlownaSurface,
-            shadowElevation = 4.dp
+            shape = RoundedCornerShape(22.dp),
+            color = FlownaTextPrimary,
+            shadowElevation = 10.dp
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Lavender600.copy(alpha = 0.18f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 LinearProgressIndicator(
@@ -78,7 +88,7 @@ fun BottomPlayerBar(
                         .height(2.dp)
                         .clip(CircleShape),
                     color = Lavender600,
-                    trackColor = FlownaBorder
+                    trackColor = Color.White.copy(alpha = 0.08f)
                 )
 
                 Row(
@@ -101,7 +111,7 @@ fun BottomPlayerBar(
                         Text(
                             text = song.title,
                             style = MaterialTheme.typography.titleMedium,
-                            color = FlownaTextPrimary,
+                            color = FlownaSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.basicMarquee()
@@ -112,7 +122,7 @@ fun BottomPlayerBar(
                                 song.album.takeIf { it.isNotBlank() }
                             ).joinToString(" | ").ifBlank { "Bilinmeyen sanatçı" },
                             style = MaterialTheme.typography.labelSmall,
-                            color = FlownaTextMuted,
+                            color = Color.White.copy(alpha = 0.48f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -122,7 +132,7 @@ fun BottomPlayerBar(
 
                     Surface(
                         shape = CircleShape,
-                        color = Lavender100
+                        color = Lavender600
                     ) {
                         IconButton(
                             onClick = { playerViewModel.togglePlayPause() },
@@ -131,7 +141,7 @@ fun BottomPlayerBar(
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (isPlaying) "Duraklat" else "Çal",
-                                tint = Lavender600
+                                tint = FlownaSurface
                             )
                         }
                     }
@@ -144,7 +154,7 @@ fun BottomPlayerBar(
                             Icon(
                                 imageVector = Icons.Default.SkipNext,
                                 contentDescription = "Sonraki",
-                                tint = FlownaTextPrimary
+                                tint = Color.White.copy(alpha = 0.72f)
                             )
                         }
                     }

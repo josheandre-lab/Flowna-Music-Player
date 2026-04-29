@@ -45,7 +45,7 @@ import com.flowna.musicplayer.ui.theme.Lavender100
 import com.flowna.musicplayer.ui.theme.Lavender300
 import com.flowna.musicplayer.ui.theme.Lavender600
 
-private val FlownaPanelShape = RoundedCornerShape(16.dp)
+private val FlownaPanelShape = RoundedCornerShape(18.dp)
 
 @Composable
 fun FlownaGradientBackground(
@@ -56,9 +56,9 @@ fun FlownaGradientBackground(
         modifier = modifier.background(
             Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFFFFFCFF),
+                    Color(0xFFFBF8F4),
                     MaterialTheme.colorScheme.background,
-                    Color(0xFFF3F0FF)
+                    Color(0xFFF1ECE6)
                 )
             )
         )
@@ -69,7 +69,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.09f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                             Color.Transparent
                         ),
                         center = Offset(180f, 140f),
@@ -83,7 +83,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.07f),
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.06f),
                             Color.Transparent
                         ),
                         center = Offset(920f, 1380f),
@@ -97,7 +97,7 @@ fun FlownaGradientBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.82f),
+                            Color.White.copy(alpha = 0.68f),
                             Color.Transparent
                         ),
                         center = Offset(520f, 240f),
@@ -120,14 +120,14 @@ fun FlownaPanel(
         shape = FlownaPanelShape,
         color = FlownaSurface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 3.dp,
+        shadowElevation = 2.dp,
         tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(FlownaSurface)
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 15.dp),
             verticalArrangement = Arrangement.spacedBy(verticalSpacing),
             content = content
         )
