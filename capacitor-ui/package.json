@@ -1,13 +1,15 @@
 {
   "name": "flowna-capacitor-ui",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "private": true,
   "description": "Capacitor-ready Flowna Music Player HTML interface reference.",
   "scripts": {
     "cap:init": "npx cap init \"Flowna Music Player\" \"com.flowna.musicplayer\" --web-dir www",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync android",
-    "cap:open": "npx cap open android"
+    "cap:open": "npx cap open android",
+    "android:debug": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
+    "android:release:apk": "npm run cap:sync && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",

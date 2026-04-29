@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Flowna Music Player</string>
+    <string name="title_activity_main">Flowna Music Player</string>
+    <string name="package_name">com.flowna.musicplayer</string>
+    <string name="custom_url_scheme">com.flowna.musicplayer</string>
+</resources>
