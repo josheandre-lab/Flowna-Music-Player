@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,8 +34,8 @@ final class NewPipeDownloader extends Downloader {
         HttpURLConnection connection = (HttpURLConnection) new URL(request.url()).openConnection();
         try {
             connection.setRequestMethod(request.httpMethod());
-            connection.setConnectTimeout(30000);
-            connection.setReadTimeout(30000);
+            connection.setConnectTimeout(12000);
+            connection.setReadTimeout(12000);
             connection.setInstanceFollowRedirects(true);
 
             Map<String, List<String>> headers = request.headers();
@@ -76,8 +77,10 @@ final class NewPipeDownloader extends Downloader {
             } catch (Exception ignored) {
             }
 
-            Map<String, List<String>> responseHeaders = connection.getHeaderFields();
-            if (responseHeaders == null) responseHeaders = Collections.emptyMap();
+            Map<String, List<String>> rawHeaders = connection.getHeaderFields();
+            Map<String, List<String>> responseHeaders = rawHeaders == null
+                    ? Collections.emptyMap()
+                    : new HashMap<>(rawHeaders);
             responseHeaders.remove(null);
             return new Response(
                     code,

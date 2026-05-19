@@ -1,9 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="tr">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>Flowna Music Player</title>
+<link rel="preload" as="image" href="flowna-logo.png">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -11,6 +12,8 @@
   --p:#FF6B4A;--p2:#FF8A6E;--pu:#FFF0EC;
   --s:#1A1A2E;--s2:#252540;
   --g:#00C896;--gu:rgba(0,200,150,0.12);
+  /* Premium accent color (used to propagate premium language across UI) */
+  --premium:#D97706;
   --t1:#1A1A2E;--t2:#6B7280;--t3:#A0ADB8;
   --bdr:rgba(26,26,46,0.07);
   --sh0:0 1px 3px rgba(26,26,46,.05);
@@ -19,7 +22,7 @@
   --sh3:0 20px 60px rgba(26,26,46,.14),0 4px 16px rgba(26,26,46,.08);
   --nav:70px;--mini:70px;
 }
-html,body{height:100%;overflow:hidden;background:#DEDAD5;
+html,body{height:var(--app-h,100vh);overflow:hidden;background:#DEDAD5;
   font-family:-apple-system,'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 #app{height:100%;display:flex;align-items:center;justify-content:center}
 #shell{width:390px;height:844px;background:var(--bg);position:relative;overflow:hidden;
@@ -27,12 +30,34 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
   box-shadow:0 40px 100px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.25),inset 0 1px 0 rgba(255,255,255,.6)}
 @media(max-width:440px){
   body{background:var(--bg)}
-  #shell{width:100vw;height:100dvh;border-radius:0;box-shadow:none}
+  #shell{width:100vw;height:var(--app-h,100vh);border-radius:0;box-shadow:none}
   #app{display:block}
 }
 .scr{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);
-  transition:opacity .26s,transform .26s;z-index:1}
-.scr.off{opacity:0;pointer-events:none;transform:translateY(8px)}
+  transition:opacity .18s ease;z-index:1;transform:none}
+.scr.off{opacity:0;pointer-events:none;transform:none}
+.splash{position:absolute;inset:0;z-index:200;background:#2E1608;display:flex;align-items:center;justify-content:center;
+  transition:opacity .42s ease,visibility .42s ease;overflow:hidden}
+.splash.off{opacity:0;visibility:hidden;pointer-events:none}
+.splbg{position:absolute;inset:0;background:
+  radial-gradient(circle at 50% 42%,rgba(255,190,72,.42),transparent 35%),
+  radial-gradient(circle at 70% 32%,rgba(255,111,0,.28),transparent 30%),
+  linear-gradient(145deg,#2A1407,#5A2B0B 58%,#1E1008)}
+.sporb{position:absolute;width:244px;height:244px;border-radius:50%;z-index:1;
+  background:radial-gradient(circle,rgba(255,183,73,.22),rgba(255,107,74,.08) 48%,transparent 70%);
+  border:1px solid rgba(255,214,134,.16);animation:spPulse 1.8s ease-in-out infinite}
+.splogo{width:196px;height:196px;border-radius:44px;object-fit:cover;position:relative;z-index:2;
+  filter:drop-shadow(0 24px 48px rgba(255,132,24,.52));animation:splIn .9s cubic-bezier(.2,.9,.2,1) both,spFloat 2.2s ease-in-out .9s infinite}
+.sptext{position:absolute;z-index:2;bottom:142px;color:rgba(255,255,255,.74);font-size:13px;font-weight:800;letter-spacing:8px}
+.spbars{position:absolute;z-index:2;bottom:185px;display:flex;gap:5px;align-items:flex-end;height:28px}
+.spbars i{width:4px;border-radius:999px;background:linear-gradient(#FFE7A3,#FF8A2A);opacity:.74;animation:spBar .72s ease-in-out infinite alternate}
+.spbars i:nth-child(1){height:10px;animation-delay:.05s}.spbars i:nth-child(2){height:20px;animation-delay:.18s}
+.spbars i:nth-child(3){height:14px;animation-delay:.3s}.spbars i:nth-child(4){height:26px;animation-delay:.08s}
+.spbars i:nth-child(5){height:17px;animation-delay:.22s}
+@keyframes splIn{from{opacity:0;transform:scale(.86) translateY(18px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes spFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes spPulse{0%,100%{transform:scale(.9);opacity:.55}50%{transform:scale(1.08);opacity:1}}
+@keyframes spBar{from{transform:scaleY(.45);opacity:.42}to{transform:scaleY(1.25);opacity:.9}}
 .scroll{flex:1;overflow-y:auto;overflow-x:hidden;
   padding-bottom:calc(var(--mini) + var(--nav) + 20px);scrollbar-width:none}
 .scroll::-webkit-scrollbar{display:none}
@@ -40,21 +65,29 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .stitle{font-size:30px;font-weight:800;color:var(--t1);letter-spacing:-.8px;line-height:1.1}
 .ssub{font-size:13px;color:var(--t2);margin-top:3px}
 /* NAV */
-#nav{position:absolute;bottom:0;left:0;right:0;height:var(--nav);
+  #nav{position:absolute;bottom:0;left:0;right:0;height:var(--nav);
   background:rgba(255,255,255,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border-top:1px solid var(--bdr);display:flex;align-items:center;padding:0 8px;
   z-index:50;box-shadow:0 -2px 20px rgba(26,26,46,.06)}
 .ni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:3px;padding:7px 4px;cursor:pointer;border-radius:14px;position:relative;
-  transition:transform .15s;user-select:none}
-.ni:active{transform:scale(.91)}
-.npill{position:absolute;inset:3px 4px;background:var(--pu);border-radius:12px;z-index:-1;
+  transition:transform .15s;user-select:none;color:var(--navTone,#8A5CFF)}
+.ni.nav-search{--navTone:#8A5CFF;--navRgb:138,92,255}
+.ni.nav-downloads{--navTone:#00B894;--navRgb:0,184,148}
+.ni.nav-library{--navTone:#3B82F6;--navRgb:59,130,246}
+.ni.nav-settings{--navTone:#F59E0B;--navRgb:245,158,11}
+.ni:active{transform:scale(.97)}
+.npill{position:absolute;inset:3px 4px;background:rgba(var(--navRgb,138,92,255),.13);border-radius:12px;z-index:-1;
   opacity:0;transform:scale(.8);transition:opacity .22s,transform .3s cubic-bezier(.34,1.56,.64,1)}
 .ni.on .npill{opacity:1;transform:scale(1)}
-.nico{font-size:21px;transition:transform .22s cubic-bezier(.34,1.56,.64,1)}
-.ni.on .nico{transform:scale(1.15)}
+.nico{font-size:21px;line-height:0;color:var(--navTone);opacity:.58;
+  transition:transform .22s cubic-bezier(.34,1.56,.64,1),opacity .18s,filter .18s}
+.ico{width:1em;height:1em;display:block;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.ni.on .nico{transform:scale(1.06);opacity:1;filter:drop-shadow(0 8px 15px rgba(var(--navRgb,138,92,255),.22))}
 .nlbl{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.5px;transition:color .2s}
-.ni.on .nlbl{color:var(--p)}
+.ni.on .nlbl{color:var(--navTone)}
+.ni.premium .nico{color:var(--premium)}
+#act.premium .ico{color:var(--premium)}
 /* MINI */
 #mini{position:absolute;bottom:var(--nav);left:8px;right:8px;height:var(--mini);
   background:var(--s);border-radius:22px;display:flex;align-items:center;gap:12px;padding:0 14px;
@@ -77,7 +110,7 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
   border-radius:50%;cursor:pointer;color:rgba(255,255,255,.7);font-size:17px;
   transition:all .14s;border:none;background:transparent;font-family:inherit}
 .mbtn:active{transform:scale(.84);background:rgba(255,255,255,.1)}
-.mbtn.mplay{background:var(--p);color:#fff;font-size:16px;box-shadow:0 4px 12px rgba(255,107,74,.4)}
+.mbtn.mplay{background:linear-gradient(135deg,#8A5CFF,#FF8A2A);color:#fff;font-size:16px;box-shadow:0 4px 14px rgba(138,92,255,.35)}
 /* SEARCH */
 .swrap{margin:0 24px 14px;position:relative}
 .sinp{width:100%;padding:14px 46px;border-radius:999px;border:1.5px solid var(--bdr);
@@ -85,7 +118,7 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
   box-shadow:var(--sh0);transition:border .2s,box-shadow .2s}
 .sinp:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(255,107,74,.1)}
 .sinp::placeholder{color:var(--t3)}
-.sico{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-size:18px;color:var(--t3);pointer-events:none}
+.sico{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-size:18px;color:var(--t3);pointer-events:none;line-height:0}
 .sclr{position:absolute;right:14px;top:50%;transform:translateY(-50%);
   width:24px;height:24px;border-radius:50%;background:rgba(26,26,46,.08);
   display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--t2);cursor:pointer}
@@ -113,12 +146,33 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .dur{font-size:11px;color:var(--t3)}
 .mcact{display:flex;gap:4px;align-items:center;flex-shrink:0}
 .cbtn{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;
-  justify-content:center;cursor:pointer;font-size:15px;transition:all .14s;
+  justify-content:center;cursor:pointer;font-size:17px;transition:all .14s;
   border:none;background:transparent;font-family:inherit}
 .cbtn:active{transform:scale(.84)}
-.cprev{background:var(--pu);color:var(--p)}
-.cdl{background:var(--gu);color:var(--g)}
-.cmore{color:var(--t3);font-size:20px}
+.cprev{background:linear-gradient(135deg,#F0E8FF,#FFF1E5);color:#7C3AED;box-shadow:0 7px 18px rgba(124,58,237,.12)}
+.cdl{background:linear-gradient(135deg,#E7FFF6,#FFF5E0);color:#00A875;box-shadow:0 7px 18px rgba(0,184,148,.12)}
+.cmore{color:#7A6C87;font-size:20px;background:rgba(138,92,255,.08)}
+/* ACTION SHEET */
+#act{position:absolute;inset:0;z-index:210;display:flex;flex-direction:column;justify-content:flex-end;
+  background:rgba(20,20,36,.38);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  transition:opacity .24s}
+#act.off{opacity:0;pointer-events:none}
+#act.off .asheet{transform:translateY(100%)}
+.asheet{background:var(--surface);border-radius:28px 28px 0 0;padding:16px 18px 34px;
+  box-shadow:0 -16px 60px rgba(26,26,46,.18);transition:transform .3s cubic-bezier(.32,.72,0,1)}
+.ashandle{width:38px;height:4px;background:var(--bdr);border-radius:2px;margin:0 auto 14px}
+.ashead{display:flex;align-items:center;gap:12px;padding:4px 4px 14px;border-bottom:1px solid var(--bdr)}
+.astxt{flex:1;min-width:0}
+.ast{font-size:15px;font-weight:800;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.asa{font-size:12px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arow{width:100%;min-height:50px;border:none;background:transparent;border-radius:15px;padding:0 12px;
+  display:flex;align-items:center;gap:12px;color:var(--t1);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.arow:active{background:rgba(26,26,46,.05);transform:scale(.99)}
+.arow .ico{font-size:20px;color:var(--p);flex-shrink:0}
+.arow.danger{color:#EF4444}.arow.danger .ico{color:#EF4444}
+.ainput{width:100%;height:48px;border-radius:16px;border:1.5px solid var(--bdr);background:#FAF8F5;
+  color:var(--t1);font:inherit;font-size:15px;font-weight:700;padding:0 14px;outline:none;margin-top:14px}
+.asplit{display:flex;gap:10px;margin-top:14px}.asplit .pdlbtn{color:#fff}
 /* PREVIEW */
 #pov{position:absolute;inset:0;z-index:200;display:flex;flex-direction:column;justify-content:flex-end;
   background:rgba(20,20,36,.52);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
@@ -139,12 +193,13 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .pbth{width:14px;height:14px;border-radius:50%;background:var(--p);position:absolute;right:-7px;top:-5px;box-shadow:0 2px 8px rgba(255,107,74,.45)}
 .ptm{display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:6px}
 .pctrls2{display:flex;align-items:center;gap:12px;margin-top:16px}
-.ppbtn{width:56px;height:56px;border-radius:50%;background:var(--p);display:flex;align-items:center;
+.ppbtn{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#8A5CFF,#FF8A2A);display:flex;align-items:center;
   justify-content:center;font-size:21px;color:#fff;cursor:pointer;
-  box-shadow:0 8px 24px rgba(255,107,74,.4);transition:transform .14s;flex-shrink:0;border:none}
+  box-shadow:0 8px 24px rgba(138,92,255,.32);transition:transform .14s;flex-shrink:0;border:none}
 .ppbtn:active{transform:scale(.88)}
 .pdlbtn{flex:1;padding:14px;border-radius:999px;background:var(--s);color:#fff;font-size:14px;
-  font-weight:700;text-align:center;cursor:pointer;border:none;font-family:inherit;transition:all .14s}
+  font-weight:700;text-align:center;cursor:pointer;border:none;font-family:inherit;transition:all .14s;
+  display:flex;align-items:center;justify-content:center;gap:8px}
 .pdlbtn:active{transform:scale(.97)}
 .pclbtn{width:100%;padding:12px;border-radius:999px;background:var(--bg);border:none;
   font-size:14px;color:var(--t2);font-family:inherit;cursor:pointer;margin-top:10px;font-weight:500}
@@ -201,7 +256,8 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .aicard::after{content:'';position:absolute;bottom:-24px;left:-20px;width:80px;height:80px;border-radius:50%;background:rgba(0,200,150,.07)}
 .ailogo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--p),var(--p2));
   display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px;
-  box-shadow:0 10px 28px rgba(255,107,74,.42)}
+  color:#fff;box-shadow:0 10px 28px rgba(255,107,74,.42)}
+.ailogo img{width:100%;height:100%;border-radius:18px;object-fit:cover;display:block}
 .ainame{font-size:18px;font-weight:800;color:#fff;letter-spacing:-.2px}
 .aiver{font-size:12px;color:rgba(255,255,255,.42);margin-top:3px}
 .vbs{display:flex;gap:8px;justify-content:center;margin-top:12px}
@@ -215,7 +271,8 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .sr::after{content:'';position:absolute;bottom:0;left:52px;right:0;height:1px;background:var(--bdr)}
 .sr:last-child::after{display:none}
 .sr:active{background:rgba(26,26,46,.03)}
-.srico{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.srico{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:0;flex-shrink:0;
+  color:#fff;background:linear-gradient(135deg,#8A5CFF,#FF8A2A);box-shadow:0 8px 18px rgba(138,92,255,.14)}
 .sri{flex:1;min-width:0}
 .srt{font-size:14px;font-weight:500;color:var(--t1)}
 .srs{font-size:12px;color:var(--t2);margin-top:1px}
@@ -256,8 +313,7 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .plaw{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:8px 0}
 .plart{width:274px;height:274px;border-radius:26px;background:linear-gradient(135deg,#ede0ff,#ffd6cc);
   display:flex;align-items:center;justify-content:center;font-size:96px;overflow:hidden;
-  box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.06);
-  animation:afloat 4s ease-in-out infinite}
+  box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.06);touch-action:none;user-select:none}
 .plart img{width:100%;height:100%;object-fit:cover;display:block}
 @keyframes afloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 /* SPECTRUM */
@@ -288,7 +344,7 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 .cc:active{transform:scale(.84);color:#fff}
 .ccpn{color:rgba(255,255,255,.82);font-size:26px}
 .ccskipn{font-size:9px;font-weight:800;color:rgba(255,255,255,.55);margin-top:-1px}
-.ccplay{width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;
+.ccplay{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#fff,#FFE4B8);display:flex;align-items:center;
   justify-content:center;font-size:26px;color:var(--s);cursor:pointer;border:none;font-family:inherit;
   box-shadow:0 10px 34px rgba(255,255,255,.18);transition:transform .14s}
 .ccplay:active{transform:scale(.9)}
@@ -300,12 +356,14 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 #toast.off{opacity:0;pointer-events:none;transform:translateY(16px)}
 /* EMPTY */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 32px;text-align:center}
-.eico{font-size:48px;margin-bottom:14px;opacity:.32}
+.eico{font-size:48px;margin-bottom:14px;opacity:.32;color:var(--p);line-height:0}
+.eico .ico{margin:auto}
 .et{font-size:16px;font-weight:800;color:var(--t2)}
 .es{font-size:13px;color:var(--t3);margin-top:5px;line-height:1.6}
 /* ANIMS */
-@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.au{animation:fadeUp .32s cubic-bezier(.4,0,.2,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.au{animation:fadeUp .18s ease both}
+body.ui-settled .au{animation:none}
 @keyframes sdot{0%{transform:translateY(0);opacity:.4}100%{transform:translateY(-7px);opacity:1}}
 .sldot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--p);margin:0 2px;animation:sdot .8s ease-in-out infinite alternate}
 .sldot:nth-child(2){animation-delay:.2s}
@@ -314,6 +372,7 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
 </head>
 <body>
 <div id="app"><div id="shell">
+  <div id="splash" class="splash"><div class="splbg"></div><div class="sporb"></div><img class="splogo" src="flowna-logo.png" alt="Flowna" loading="eager" decoding="async" fetchpriority="high"><div class="spbars"><i></i><i></i><i></i><i></i><i></i></div><div class="sptext">MUSIC PLAYER</div></div>
   <div class="scr" id="scr-search"></div>
   <div class="scr off" id="scr-library"></div>
   <div class="scr off" id="scr-downloads"></div>
@@ -322,506 +381,9 @@ html,body{height:100%;overflow:hidden;background:#DEDAD5;
   <nav id="nav"></nav>
   <div id="player" class="off"></div>
   <div id="pov" class="off" onclick="closePrev()"></div>
+  <div id="act" class="off" onclick="closeActionSheet()"></div>
   <div id="toast" class="off"></div>
 </div></div>
 <script src="app.js"></script>
-<script type="application/x-flowna-static-disabled">
-// DATA
-const C=['https://picsum.photos/seed/fl11/400/400','https://picsum.photos/seed/fl22/400/400','https://picsum.photos/seed/fl33/400/400','https://picsum.photos/seed/fl44/400/400','https://picsum.photos/seed/fl55/400/400','https://picsum.photos/seed/fl66/400/400','https://picsum.photos/seed/fl77/400/400','https://picsum.photos/seed/fl88/400/400'];
-const SONGS=[
-  {id:1,title:'Gece Yarısı Senfoni',artist:'Asya Kara',dur:'3:42',secs:222,cover:C[0],badge:'yt',dl:true,plays:1280},
-  {id:2,title:'Derin Su',artist:'Mavi Ekip',dur:'4:15',secs:255,cover:C[1],badge:'yt',dl:true,plays:970},
-  {id:3,title:'Şehir Işıkları',artist:'Neon Rüzgar',dur:'3:28',secs:208,cover:C[2],badge:'local',dl:false,plays:2040},
-  {id:4,title:'Sabah Yağmuru',artist:'Elif Deniz',dur:'5:01',secs:301,cover:C[3],badge:'yt',dl:true,plays:560},
-  {id:5,title:'Kızıl Orman',artist:'Terra Nova',dur:'3:55',secs:235,cover:C[4],badge:'local',dl:false,plays:3110},
-  {id:6,title:'Ay Sesi',artist:'Luna Proje',dur:'4:22',secs:262,cover:C[5],badge:'yt',dl:true,plays:880},
-  {id:7,title:'Rüzgar Çiçeği',artist:'Esra Yıldız',dur:'3:10',secs:190,cover:C[6],badge:'local',dl:true,plays:1760},
-  {id:8,title:'Dijital Vaadi',artist:'SynthWave TR',dur:'4:48',secs:288,cover:C[7],badge:'yt',dl:false,plays:1430},
-];
-const RESULTS=[
-  {id:9,title:'Peri Pembesi',artist:'Pembe Ay',dur:'3:18',secs:198,cover:C[0],badge:'yt'},
-  {id:10,title:'Sonsuz Yaz',artist:'Güneş Kolektif',dur:'4:02',secs:242,cover:C[1],badge:'yt'},
-  {id:11,title:'Kayalık Çağrı',artist:'Dağ Sesi',dur:'3:35',secs:215,cover:C[2],badge:'yt'},
-  {id:12,title:'Elektronik Gece',artist:'Byte Dalgası',dur:'5:22',secs:322,cover:C[3],badge:'yt'},
-  {id:13,title:'Yağmur Dansı',artist:'Aqua Müzik',dur:'3:48',secs:228,cover:C[4],badge:'yt'},
-];
-const ADL=[
-  {id:'a1',title:'Neon Sabah',artist:'Kara Işık',cover:C[0],speed:'1.2 MB/s',size:'8.4 MB'},
-  {id:'a2',title:'Yıldız Tozu',artist:'Galaktik Beat',cover:C[1],speed:'0.8 MB/s',size:'12.1 MB'},
-];
-const DDL=[
-  {id:'d1',title:'Sabah Sisi',artist:'Mavi Çiçek',cover:C[2],size:'7.2 MB',date:'Bugün'},
-  {id:'d2',title:'Gece Treni',artist:'Rails Sound',cover:C[3],size:'9.8 MB',date:'Dün'},
-  {id:'d3',title:'Kumsal Ritmi',artist:'Okyanus',cover:C[4],size:'6.5 MB',date:'2 gün önce'},
-];
-const FDL=[{id:'f1',title:'Kayıp Melodi',artist:'Arşiv DJ',cover:C[5],err:'Bağlantı zaman aşımına uğradı'}];
-const RECENT=['Sabah Müziği','Lo-fi','Türkçe Pop','Caz','Klasik Rock','Elektronik'];
-const SPEC_H=[14,9,18,12,20,7,22,11,16,20,9,17,13,21,8,18];
-
-// STATE
-const st={
-  screen:'search',song:SONGS[0],playing:false,prog:30,
-  playerOpen:false,liked:false,
-  prevSong:null,prevPl:false,prevProg:0,
-  query:'',queryDone:false,
-  libTab:'all',dlTab:'active',
-  dlP:{a1:67,a2:23},
-  quality:'320K',autoUp:true,bgDl:true,wifiOnly:false,
-  toastTmr:null,progTmr:null,prevTmr:null,searchTmr:null,
-};
-
-// HELPERS
-const $=id=>document.getElementById(id);
-const fmt=s=>{const n=Math.floor(+s||0);return`${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`};
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
-function imgD(src,w,h,r,fs){
-  return`<div style="width:${w}px;height:${h}px;border-radius:${r}px;flex-shrink:0;background:linear-gradient(135deg,#ede0ff,#ffd6cc);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:${fs}px"><img src="${src}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'" loading="lazy"></div>`;
-}
-function bdg(b){
-  if(b==='yt') return'<span class="bdg byt">YouTube</span>';
-  if(b==='local') return'<span class="bdg bloc">Yerel</span>';
-  if(b==='dl') return'<span class="bdg bdl">💾 İndirildi</span>';
-  return'';
-}
-function sJ(s){return esc(JSON.stringify(s))}
-function toast(msg,d=2400){
-  const t=$('toast');t.textContent=msg;t.classList.remove('off');
-  clearTimeout(st.toastTmr);st.toastTmr=setTimeout(()=>t.classList.add('off'),d);
-}
-
-// NAV
-function renderNav(){
-  $('nav').innerHTML=[
-    {id:'search',ico:'🔍',lbl:'Ara'},
-    {id:'downloads',ico:'⬇️',lbl:'İndirme'},
-    {id:'library',ico:'🎵',lbl:'Kütüphane'},
-    {id:'settings',ico:'⚙️',lbl:'Ayarlar'},
-  ].map(it=>`<div class="ni ${st.screen===it.id?'on':''}" onclick="goScreen('${it.id}')">
-    <div class="npill"></div><div class="nico">${it.ico}</div><div class="nlbl">${it.lbl}</div>
-  </div>`).join('');
-}
-function goScreen(s){
-  document.querySelectorAll('.scr').forEach(e=>e.classList.add('off'));
-  $(`scr-${s}`).classList.remove('off');
-  st.screen=s;st.playerOpen=false;$('player').classList.add('off');
-  renderNav();render(s);
-}
-
-// MINI PLAYER
-function renderMini(){
-  const s=st.song;
-  if(!s){$('mini').style.display='none';return;}
-  $('mini').style.display='flex';
-  $('mini').innerHTML=`<div class="mglow"></div>
-    <div class="mcover">${imgD(s.cover,48,48,12,22)}</div>
-    <div class="minfo"><div class="mtitle">${esc(s.title)}</div><div class="martist">${esc(s.artist)}</div></div>
-    <div class="mctrls" onclick="event.stopPropagation()">
-      <button class="mbtn mplay" onclick="togglePlay()">${st.playing?'⏸':'▶'}</button>
-      <button class="mbtn" onclick="nextSong()">⏭</button>
-    </div>
-    <div class="mprog"><div class="mpfill" id="mpfill" style="width:${st.prog}%"></div></div>`;
-}
-
-// PLAYBACK
-function togglePlay(){
-  st.playing=!st.playing;
-  renderMini();updatePlayerBtn();updateSpec();
-  st.playing?startProg():stopProg();
-}
-function startProg(){
-  stopProg();
-  st.progTmr=setInterval(()=>{
-    st.prog=st.prog>=100?0:st.prog+0.12;
-    const f=$('mpfill');if(f)f.style.width=st.prog+'%';
-    const pf=document.querySelector('.plpbf');if(pf)pf.style.width=st.prog+'%';
-    const t=document.querySelector('.pltime span');if(t)t.textContent=fmt(st.prog/100*(st.song?.secs||222));
-  },200);
-}
-function stopProg(){clearInterval(st.progTmr);}
-function playSong(json){
-  const s=typeof json==='string'?JSON.parse(json):json;
-  st.song=s;st.playing=true;st.prog=0;st.liked=false;
-  renderMini();renderPlayer();$('player').classList.remove('off');
-  st.playerOpen=true;startProg();
-  toast('▶ '+s.title+' çalıyor');
-}
-function nextSong(){
-  const i=SONGS.findIndex(s=>s.id===st.song?.id);
-  playSong(SONGS[(i+1)%SONGS.length]);
-}
-function prevSong(){
-  const i=SONGS.findIndex(s=>s.id===st.song?.id);
-  playSong(SONGS[(i-1+SONGS.length)%SONGS.length]);
-}
-function seekPlayer(e){
-  const r=e.currentTarget.getBoundingClientRect();
-  st.prog=Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100));
-  const pf=document.querySelector('.plpbf');if(pf)pf.style.width=st.prog+'%';
-  const t=document.querySelector('.pltime span');if(t)t.textContent=fmt(st.prog/100*(st.song?.secs||222));
-}
-function updatePlayerBtn(){const b=document.querySelector('.ccplay');if(b)b.textContent=st.playing?'⏸':'▶';}
-function updateSpec(){
-  const sp=document.querySelector('.spec');
-  if(sp)sp.innerHTML=SPEC_H.map((h,i)=>`<div class="sb2 ${st.playing?'pl':''}" style="height:${st.playing?h:3}px;--h:${h}px;--d:${(.38+(i%6)*.09).toFixed(2)}s"></div>`).join('');
-}
-
-// FULL PLAYER
-function specHTML(){return SPEC_H.map((h,i)=>`<div class="sb2 ${st.playing?'pl':''}" style="height:${st.playing?h:3}px;--h:${h}px;--d:${(.38+(i%6)*.09).toFixed(2)}s"></div>`).join('');}
-function toggleLike(){
-  st.liked=!st.liked;
-  const b=document.querySelector('.plfav');if(b)b.textContent=st.liked?'❤️':'🤍';
-  toast(st.liked?'❤️ Favorilere eklendi':'🤍 Favorilerden çıkarıldı');
-}
-function openPlayer(){st.playerOpen=true;renderPlayer();$('player').classList.remove('off');}
-function closePlayer(){st.playerOpen=false;$('player').classList.add('off');}
-function renderPlayer(){
-  const s=st.song;if(!s)return;
-  $('player').innerHTML=`
-    <div class="plbg">
-      <div class="plbga">${imgD(s.cover,400,400,0,0)}</div>
-      <div class="plbgov"></div>
-    </div>
-    <div class="plcon">
-      <div class="plhdr">
-        <button class="plbtn2" onclick="closePlayer()">⌄</button>
-        <div class="plhdrt">Şimdi Çalıyor</div>
-        <button class="plbtn2">⋯</button>
-      </div>
-      <div class="plaw">
-        <div class="plart">${imgD(s.cover,274,274,26,96)}</div>
-        <div class="spec">${specHTML()}</div>
-      </div>
-      <div class="plrow">
-        <div style="flex:1;min-width:0">
-          <div class="plsn">${esc(s.title)}</div>
-          <div class="plar">${esc(s.artist)}</div>
-        </div>
-        <button class="plfav" onclick="toggleLike()">${st.liked?'❤️':'🤍'}</button>
-      </div>
-      <div class="plprog">
-        <div class="plpb" onclick="seekPlayer(event)">
-          <div class="plpbf" style="width:${st.prog}%"><div class="plpbt"></div></div>
-        </div>
-        <div class="pltime"><span>${fmt(st.prog/100*s.secs)}</span><span>${s.dur}</span></div>
-      </div>
-      <div class="placts">
-        <button class="plact" onclick="toast('➕ Sıraya eklendi')">➕ Sıraya Ekle</button>
-        <button class="plact" onclick="toast('↗️ Link kopyalandı')">↗️ Paylaş</button>
-      </div>
-      <div class="plctrls">
-        <button class="cc ccpn" onclick="prevSong()">⏮</button>
-        <button class="cc" onclick="toast('10 saniye geri alındı')">
-          <span style="font-size:22px">↺</span><span class="ccskipn">10</span>
-        </button>
-        <button class="ccplay" onclick="togglePlay()">${st.playing?'⏸':'▶'}</button>
-        <button class="cc" onclick="toast('10 saniye ileri alındı')">
-          <span style="font-size:22px">↻</span><span class="ccskipn">10</span>
-        </button>
-        <button class="cc ccpn" onclick="nextSong()">⏭</button>
-      </div>
-    </div>`;
-}
-
-// PREVIEW
-function openPrev(json){
-  const s=typeof json==='string'?JSON.parse(json):json;
-  st.prevSong=s;st.prevPl=true;st.prevProg=0;
-  renderPrev();$('pov').classList.remove('off');startPrevProg();
-}
-function closePrev(){$('pov').classList.add('off');stopPrevProg();st.prevSong=null;st.prevPl=false;st.prevProg=0;}
-function stopPrevProg(){clearInterval(st.prevTmr);}
-function startPrevProg(){
-  stopPrevProg();
-  st.prevTmr=setInterval(()=>{
-    if(!st.prevPl)return;
-    st.prevProg=st.prevProg>=100?0:st.prevProg+0.6;
-    const f=$('pov').querySelector('.pbf');if(f)f.style.width=st.prevProg+'%';
-    const t=$('pov').querySelector('.ptm span');if(t)t.textContent=fmt(st.prevProg/100*30);
-  },180);
-}
-function togglePrevPlay(){
-  st.prevPl=!st.prevPl;
-  const b=$('pov').querySelector('.ppbtn');if(b)b.textContent=st.prevPl?'⏸':'▶';
-  st.prevPl?startPrevProg():stopPrevProg();
-}
-function renderPrev(){
-  const s=st.prevSong;if(!s)return;
-  $('pov').innerHTML=`<div class="psheet" onclick="event.stopPropagation()">
-    <div class="phdl"></div>
-    <div class="pcov" style="width:116px;height:116px;margin:0 auto 16px">${imgD(s.cover,116,116,18,46)}</div>
-    <div class="pt">${esc(s.title)}</div>
-    <div class="par">${esc(s.artist)}</div>
-    <div class="pbarw">
-      <div class="pbar">
-        <div class="pbf" style="width:${st.prevProg}%"><div class="pbth"></div></div>
-      </div>
-      <div class="ptm"><span>${fmt(0)}</span><span>0:30 önizleme</span></div>
-    </div>
-    <div class="pctrls2">
-      <button class="ppbtn" onclick="togglePrevPlay()">${st.prevPl?'⏸':'▶'}</button>
-      <button class="pdlbtn" onclick="toast('⬇️ İndirme başladı');closePrev()">⬇ İndir</button>
-    </div>
-    <button class="pclbtn" onclick="closePrev()">Kapat</button>
-  </div>`;
-}
-
-// SCREEN: SEARCH
-let sTmr;
-function onSearch(v){st.query=v;st.queryDone=false;renderSearch();clearTimeout(sTmr);if(v.length>1)sTmr=setTimeout(()=>{st.queryDone=true;renderSearch();},620);}
-function clearSearch(){st.query='';st.queryDone=false;renderSearch();}
-function mcHTML(s,i,delay){
-  const j=sJ(s);
-  return`<div class="mc au" style="animation-delay:${(i*.055+(delay||0)).toFixed(2)}s" onclick='playSong("${j}")'>
-    <div class="mcimg">${imgD(s.cover,56,56,12,24)}</div>
-    <div class="mci">
-      <div class="mct">${esc(s.title)}</div>
-      <div class="mca">${esc(s.artist)}</div>
-      <div class="mcm">${bdg(s.badge)}<span class="dur">${s.dur}</span></div>
-    </div>
-    <div class="mcact" onclick="event.stopPropagation()">
-      <button class="cbtn cprev" onclick='openPrev("${j}")' title="Önizle">▶</button>
-      <button class="cbtn cdl" onclick="toast('⬇️ İndirme başladı')" title="İndir">⬇</button>
-    </div>
-  </div>`;
-}
-function renderSearch(){
-  const el=$('scr-search'),q=st.query,loading=q.length>1&&!st.queryDone;
-  const songs=q.length>1?RESULTS:SONGS.slice(0,5);
-  el.innerHTML=`<div class="shdr">
-    <div class="stitle">Ara</div>
-    <div class="ssub">Şarkı, sanatçı veya albüm keşfet.</div>
-  </div>
-  <div class="scroll">
-    <div class="swrap">
-      <div class="sico">🔍</div>
-      <input class="sinp" id="sinp" placeholder="Şarkı, sanatçı, albüm..." value="${esc(q)}" oninput="onSearch(this.value)" autocomplete="off">
-      ${q?'<div class="sclr" onclick="clearSearch()">✕</div>':''}
-    </div>
-    ${!q?`<div class="stlbl">Son Aramalar</div>
-    <div class="chips">${RECENT.map(r=>`<div class="chip" onclick="onSearch('${esc(r)}')">${r}</div>`).join('')}</div>
-    <div class="stlbl">Öne Çıkanlar</div>`:
-    loading?`<div class="empty" style="padding:40px 32px">
-      <div style="font-size:26px;margin-bottom:14px">
-        <span class="sldot"></span><span class="sldot"></span><span class="sldot"></span>
-      </div>
-      <div class="et">Aranıyor...</div>
-      <div class="es">"${esc(q)}" için sonuçlar yükleniyor</div>
-    </div>`:
-    `<div class="stlbl">${RESULTS.length} sonuç bulundu</div>`}
-    ${!loading?songs.map((s,i)=>mcHTML(s,i)).join(''):''}
-  </div>`;
-}
-
-// SCREEN: LIBRARY
-function setLibTab(t){st.libTab=t;renderLibrary();}
-function renderLibrary(){
-  const el=$('scr-library'),tab=st.libTab;
-  const songs=tab==='all'?SONGS:SONGS.filter(s=>s.dl);
-  const tops=[...SONGS].sort((a,b)=>b.plays-a.plays).slice(0,5);
-  el.innerHTML=`<div class="shdr">
-    <div class="stitle">Kütüphane</div>
-    <div class="ssub">${SONGS.length} şarkı koleksiyonunda</div>
-  </div>
-  <div class="scroll">
-    <div class="sumc au">
-      <div class="sumlbl">GENEL BAKIŞ</div>
-      <div class="sumst">
-        <div><div class="sv">${SONGS.length}</div><div class="sl">Tüm Şarkılar</div></div>
-        <div><div class="sv">${SONGS.filter(s=>s.dl).length}</div><div class="sl">İndirilenler</div></div>
-        <div><div class="sv">3</div><div class="sl">Liste</div></div>
-      </div>
-      <div class="su2">Son tarama: 2 dakika önce</div>
-    </div>
-    <div class="tabs">
-      <button class="tbtn ${tab==='all'?'on':''}" onclick="setLibTab('all')">Tüm Şarkılar</button>
-      <button class="tbtn ${tab==='dl'?'on':''}" onclick="setLibTab('dl')">İndirilenler</button>
-    </div>
-    ${tab==='all'?`
-    <div class="stlbl">Senin için öneriler</div>
-    <div class="hs" style="margin-bottom:22px">
-      ${SONGS.slice(0,5).map((s,i)=>`<div class="fc" onclick='playSong("${sJ(s)}")'>
-        <div class="fcov">${imgD(s.cover,138,138,18,48)}</div>
-        <div class="ft">${esc(s.title)}</div><div class="fa">${esc(s.artist)}</div>
-      </div>`).join('')}
-    </div>
-    <div class="stlbl">En çok dinlenenler</div>
-    <div class="hs" style="margin-bottom:22px">
-      ${tops.map((s,i)=>`<div class="fc" onclick='playSong("${sJ(s)}")'>
-        <div style="position:relative">
-          <div class="fcov">${imgD(s.cover,138,138,18,48)}</div>
-          <div style="position:absolute;top:8px;left:8px;width:23px;height:23px;border-radius:7px;background:rgba(18,18,36,.75);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)">${i+1}</div>
-        </div>
-        <div class="ft">${esc(s.title)}</div>
-        <div class="fa" style="color:var(--p)">${s.plays.toLocaleString('tr')} ♪</div>
-      </div>`).join('')}
-    </div>`:''}
-    <div class="stlbl">Liste</div>
-    ${songs.map((s,i)=>{const j=sJ(s);return`<div class="mc au" style="animation-delay:${(i*.04).toFixed(2)}s" onclick='playSong("${j}")'>
-      <div class="mcimg">${imgD(s.cover,56,56,12,24)}</div>
-      <div class="mci">
-        <div class="mct">${esc(s.title)}</div>
-        <div class="mca">${esc(s.artist)}</div>
-        <div class="mcm">${s.dl?bdg('dl'):bdg(s.badge)}<span class="dur">${s.dur}</span></div>
-      </div>
-      <div class="mcact" onclick="event.stopPropagation()">
-        <button class="cbtn cprev" onclick='openPrev("${j}")'>▶</button>
-        <button class="cbtn cmore" onclick="toast('⋯ Menü açıldı')">⋯</button>
-      </div>
-    </div>`;}).join('')}
-  </div>`;
-}
-
-// SCREEN: DOWNLOADS
-function setDlTab(t){st.dlTab=t;renderDownloads();}
-function renderDownloads(){
-  const el=$('scr-downloads'),tab=st.dlTab;
-  el.innerHTML=`<div class="shdr">
-    <div class="stitle">İndirmeler</div>
-    <div class="ssub">İndirme durumunu takip et.</div>
-  </div>
-  <div class="scroll">
-    <div class="tabs">
-      <button class="tbtn ${tab==='active'?'on':''}" onclick="setDlTab('active')">Aktif</button>
-      <button class="tbtn ${tab==='done'?'on':''}" onclick="setDlTab('done')">Tamamlandı</button>
-      <button class="tbtn ${tab==='fail'?'on':''}" onclick="setDlTab('fail')">Başarısız</button>
-    </div>
-    ${tab==='active'?ADL.map(d=>`<div class="dlc au" id="dlcard-${d.id}">
-      <div class="dlct">
-        <div class="dlt">${imgD(d.cover,48,48,12,22)}</div>
-        <div class="dli"><div class="dlti">${esc(d.title)}</div><div class="dlar">${esc(d.artist)}</div></div>
-      </div>
-      <div class="dlm">
-        <span id="dlpct-${d.id}">${Math.round(st.dlP[d.id])}% tamamlandı</span>
-        <span>${d.speed} • ${d.size}</span>
-      </div>
-      <div class="dltr"><div class="dlf" id="dlf-${d.id}" style="width:${st.dlP[d.id]}%"></div></div>
-      <div style="display:flex;gap:8px;margin-top:11px">
-        <button class="dlb dlpause" onclick="toast('⏸ Duraklatıldı')">⏸ Duraklat</button>
-        <button class="dlb dlcancel" onclick="toast('✕ İptal edildi')">✕ İptal</button>
-      </div>
-    </div>`).join(''):''}
-    ${tab==='done'?`<div class="stlbl">${DDL.length} şarkı indirildi</div>`+DDL.map((d,i)=>`<div class="dlok au" style="animation-delay:${i*.06}s">
-      <div class="dlokico">✅</div>
-      ${imgD(d.cover,48,48,12,22)}
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.title)}</div>
-        <div style="font-size:12px;color:var(--t2)">${esc(d.artist)} • ${d.size}</div>
-      </div>
-      <div style="font-size:11px;color:var(--t3);flex-shrink:0">${d.date}</div>
-    </div>`).join(''):''}
-    ${tab==='fail'?FDL.map(d=>`<div class="dlc dlfc au">
-      <div class="dlct">
-        ${imgD(d.cover,48,48,12,22)}
-        <div class="dli"><div class="dlti">${esc(d.title)}</div><div class="dlar">${esc(d.artist)}</div></div>
-        <div style="font-size:24px">❌</div>
-      </div>
-      <div class="errb">⚠️ ${esc(d.err)}</div>
-      <button class="dlb dlretry" onclick="toast('↺ Yeniden deneniyor...')">↺ Tekrar Dene</button>
-    </div>`).join(''):''}
-  </div>`;
-}
-setInterval(()=>{
-  st.dlP.a1=Math.min(100,st.dlP.a1+Math.random()*2.2);
-  st.dlP.a2=Math.min(100,st.dlP.a2+Math.random()*1.4);
-  if(st.screen==='downloads'&&st.dlTab==='active'){
-    ['a1','a2'].forEach(k=>{
-      const f=$('dlf-'+k),p=$('dlpct-'+k);
-      if(f)f.style.width=st.dlP[k]+'%';
-      if(p)p.textContent=Math.round(st.dlP[k])+'% tamamlandı';
-    });
-  }
-},950);
-
-// SCREEN: SETTINGS
-function setQ(q){st.quality=q;renderSettings();toast('🎧 Ses kalitesi: '+q);}
-function togS(k){st[k]=!st[k];renderSettings();toast(st[k]?'✅ Açıldı':'🔴 Kapatıldı');}
-function renderSettings(){
-  const el=$('scr-settings');
-  const T=(on,k)=>`<div class="tog ${on?'on':''}" onclick="togS('${k}')"><div class="togth"></div></div>`;
-  const SB=q=>`<button class="sb ${st.quality===q?'on':''}" onclick="setQ('${q}')">${q}</button>`;
-  el.innerHTML=`<div class="shdr"><div class="stitle">Ayarlar</div></div>
-  <div class="scroll">
-    <div class="aicard au">
-      <div class="ailogo">🎵</div>
-      <div class="ainame">Flowna Music Player</div>
-      <div class="aiver">Sürüm 2.4.1 • Derleme 20260429</div>
-      <div class="vbs"><span class="vb vok">✓ Güncel</span><span class="vb vgray">yt-dlp 2024.11.18</span></div>
-    </div>
-    <div class="ss"><div class="ssl">Ses ve İndirme</div>
-    <div class="sg">
-      <div class="sr"><div class="srico" style="background:rgba(255,107,74,.1)">🎧</div>
-        <div class="sri"><div class="srt">Ses Kalitesi</div><div class="srs">İndirme bit hızı</div></div>
-        <div class="seg">${SB('128K')}${SB('192K')}${SB('320K')}</div></div>
-      <div class="sr"><div class="srico" style="background:rgba(245,158,11,.1)">📶</div>
-        <div class="sri"><div class="srt">Yalnızca Wi-Fi</div><div class="srs">Veri tasarrufu</div></div>
-        ${T(st.wifiOnly,'wifiOnly')}</div>
-      <div class="sr"><div class="srico" style="background:rgba(0,200,150,.1)">🔄</div>
-        <div class="sri"><div class="srt">Arka Planda İndir</div><div class="srs">Uygulama kapalıyken devam et</div></div>
-        ${T(st.bgDl,'bgDl')}</div>
-    </div></div>
-    <div class="ss" style="margin-top:14px"><div class="ssl">Güncellemeler</div>
-    <div class="sg">
-      <div class="sr"><div class="srico" style="background:rgba(79,70,229,.1)">⚡</div>
-        <div class="sri"><div class="srt">Otomatik Güncelleme</div><div class="srs">Uygulama ve yt-dlp</div></div>
-        ${T(st.autoUp,'autoUp')}</div>
-      <div class="sr" onclick="toast('🔍 Güncellemeler kontrol ediliyor...')">
-        <div class="srico" style="background:rgba(255,107,74,.1)">🔍</div>
-        <div class="sri"><div class="srt">Güncellemeleri Kontrol Et</div><div class="srs">Son kontrol: az önce</div></div>
-        <div class="srr">›</div></div>
-    </div></div>
-    <div class="ss" style="margin-top:14px"><div class="ssl">Kütüphane</div>
-    <div class="sg">
-      <div class="sr" onclick="toast('📂 Kütüphane taranıyor...')">
-        <div class="srico" style="background:rgba(0,200,150,.1)">📂</div>
-        <div class="sri"><div class="srt">Kütüphaneyi Tara</div><div class="srs">8 şarkı bulundu</div></div>
-        <div class="srr">›</div></div>
-      <div class="sr" onclick="toast('🗑 Önbellek temizlendi — 142 MB kazanıldı')">
-        <div class="srico" style="background:rgba(239,68,68,.1)">🗑</div>
-        <div class="sri"><div class="srt">Önbelleği Temizle</div><div class="srs">142 MB kullanılıyor</div></div>
-        <div class="srr">›</div></div>
-    </div></div>
-    <div class="ss" style="margin-top:14px"><div class="ssl">Tanılama</div>
-    <div class="sg">
-      <div class="dr"><div class="dot dok"></div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--t1)">Depolama</div>
-          <div style="font-size:11px;color:var(--t2)">4.2 GB / 64 GB kullanılıyor</div></div>
-        <div style="font-size:12px;color:var(--g);font-weight:700">Normal</div></div>
-      <div class="dr"><div class="dot dok"></div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--t1)">yt-dlp</div>
-          <div style="font-size:11px;color:var(--t2)">v2024.11.18 — Güncel</div></div>
-        <div style="font-size:12px;color:var(--g);font-weight:700">OK</div></div>
-      <div class="dr"><div class="dot dok"></div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--t1)">İnternet Bağlantısı</div>
-          <div style="font-size:11px;color:var(--t2)">Wi-Fi • 142 Mbps</div></div>
-        <div style="font-size:12px;color:var(--g);font-weight:700">Güçlü</div></div>
-      <div class="dr"><div class="dot dwn"></div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--t1)">Son Hata</div>
-          <div style="font-size:11px;color:var(--t2)">3 gün önce • bağlantı zaman aşımı</div></div>
-        <div style="font-size:12px;color:#F59E0B;font-weight:700;cursor:pointer" onclick="toast('📋 Hata detayı kopyalandı')">Detay</div></div>
-    </div></div>
-    <div class="ss" style="margin-top:14px"><div class="ssl">Hakkında</div>
-    <div class="sg">
-      <div class="ir" style="border-bottom:1px solid var(--bdr)">
-        <span class="irl">Geliştirici</span><span class="irv">Flowna Labs</span></div>
-      <div class="ir" style="border-bottom:1px solid var(--bdr)">
-        <span class="irl">Derleme Tarihi</span><span class="irv">29 Nisan 2026</span></div>
-      <div class="ir">
-        <span class="irl">Lisans</span>
-        <span class="irv" style="color:var(--p);cursor:pointer" onclick="toast('🔗 Gizlilik politikası açılıyor...')">Gizlilik Politikası ›</span>
-      </div>
-    </div></div>
-    <div style="height:20px"></div>
-  </div>`;
-}
-
-// ROUTER + INIT
-function render(s){
-  if(s==='search')renderSearch();
-  else if(s==='library')renderLibrary();
-  else if(s==='downloads')renderDownloads();
-  else if(s==='settings')renderSettings();
-}
-renderNav();renderSearch();renderMini();
-</script>
 </body>
 </html>
