@@ -1,8 +1,10 @@
 package com.flowna.musicplayer;
 
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.app.PendingIntent;
 import android.app.RecoverableSecurityException;
+import android.content.SharedPreferences;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.pm.PackageInfo;
@@ -11,8 +13,11 @@ import android.media.MediaPlayer;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
+import android.content.Context;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.provider.MediaStore.MediaColumns;
 import android.util.Base64;
@@ -46,6 +51,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,6 +60,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -68,6 +76,11 @@ final class FlownaBridge {
     private static final int ARTWORK_CACHE_VERSION = 3;
     private static final long MIN_DURATION_MS = 10000L;
     private static final long YT_DLP_UPDATE_INTERVAL_MS = 24L * 60L * 60L * 1000L;
+    private static final String UPDATE_API_URL = "https://api.github.com/repos/josheandre-lab/Flowna-Music-Player/releases/latest";
+    private static final String LIVE_UPDATE_MANIFEST_ASSET = "flowna-live-update.json";
+    private static final String LIVE_UPDATE_PREFS = "flowna_live_update";
+    private static final String LIVE_WEB_VERSION_KEY = "webVersion";
+    private static final int MAX_LIVE_UPDATE_BYTES = 20 * 1024 * 1024;
 
     private final MainActivity activity;
     private final ExecutorService io = Executors.newFixedThreadPool(3);
@@ -79,6 +92,7 @@ final class FlownaBridge {
     private final AtomicBoolean ytDlpUpdateRunning = new AtomicBoolean(false);
     private final AtomicBoolean downloadRunning = new AtomicBoolean(false);
     private MediaPlayer player;
+    private WifiManager.WifiLock wifiLock;
     private JSONObject currentTrack;
     private String pendingDeleteUri;
     private String pendingRenameUri;
@@ -107,6 +121,8 @@ final class FlownaBridge {
         put(out, "manageStoragePermission", activity.hasManageStoragePermission());
         put(out, "versionName", versionName());
         put(out, "versionCode", versionCode());
+        put(out, "webVersion", currentWebVersion());
+        put(out, "liveUpdateActive", isLiveUpdateActive());
         put(out, "songs", activity.hasAudioPermission() ? querySongs(false) : new JSONArray());
         put(out, "downloadedSongs", activity.hasAudioPermission() ? querySongs(true) : new JSONArray());
         put(out, "settings", readSettings());
@@ -148,6 +164,38 @@ final class FlownaBridge {
     }
 
     @JavascriptInterface
+    public String isIgnoringBatteryOptimizations() {
+        JSONObject out = ok();
+        boolean ignoring = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                ignoring = pm.isIgnoringBatteryOptimizations(activity.getPackageName());
+            }
+        } else {
+            ignoring = true;
+        }
+        put(out, "ignoring", ignoring);
+        return out.toString();
+    }
+
+    @JavascriptInterface
+    public String requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                activity.startActivity(intent);
+                JSONObject out = ok();
+                put(out, "requested", true);
+                return out.toString();
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to launch battery optimization settings: " + e.getMessage());
+            }
+        }
+        return fail("İşlem kısıtlı veya desteklenmiyor.").toString();
+    }
+
+    @JavascriptInterface
     public String scanLibrary() {
         JSONObject out = ok();
         if (!activity.hasAudioPermission()) {
@@ -178,6 +226,7 @@ final class FlownaBridge {
         activity.runOnUiThread(() -> {
             if (player != null && player.isPlaying()) {
                 player.pause();
+                releaseWifiLock();
                 sendPlaybackEvent("paused", currentTrack);
             }
         });
@@ -189,6 +238,9 @@ final class FlownaBridge {
         activity.runOnUiThread(() -> {
             if (player != null) {
                 player.start();
+                if (isCurrentTrackOnline()) {
+                    acquireWifiLock();
+                }
                 sendPlaybackEvent("playing", currentTrack);
             }
         });
@@ -225,6 +277,9 @@ final class FlownaBridge {
                 if ("play".equals(command)) {
                     if (player != null && !player.isPlaying()) {
                         player.start();
+                        if (isCurrentTrackOnline()) {
+                            acquireWifiLock();
+                        }
                         sendPlaybackEvent("playing", currentTrack);
                     }
                     return;
@@ -232,6 +287,7 @@ final class FlownaBridge {
                 if ("pause".equals(command)) {
                     if (player != null && player.isPlaying()) {
                         player.pause();
+                        releaseWifiLock();
                         sendPlaybackEvent("paused", currentTrack);
                     }
                     return;
@@ -282,6 +338,25 @@ final class FlownaBridge {
     }
 
     @JavascriptInterface
+    public String searchSuggestions(String query, String callbackId) {
+        io.execute(() -> {
+            JSONObject event = event("searchSuggestions");
+            put(event, "callbackId", callbackId);
+            put(event, "query", query == null ? "" : query);
+            try {
+                JSONArray suggestions = loadYoutubeSuggestions(query);
+                put(event, "ok", true);
+                put(event, "suggestions", suggestions);
+            } catch (Exception error) {
+                put(event, "ok", false);
+                put(event, "error", "Öneriler alınamadı: " + friendly(error));
+            }
+            sendEvent(event);
+        });
+        return ok().toString();
+    }
+
+    @JavascriptInterface
     public String startPreview(String resultJson, String callbackId) {
         io.execute(() -> {
             JSONObject event = event("previewReady");
@@ -308,37 +383,44 @@ final class FlownaBridge {
     @JavascriptInterface
     public String startDownload(String resultJson, String callbackId) {
         downloadIo.execute(() -> {
-            String downloadId = "dl_" + System.currentTimeMillis();
-            downloadRunning.set(true);
-            String ytDlpFailure = null;
+            if (!downloadRunning.compareAndSet(false, true)) {
+                Log.w(TAG, "Download executor already has active download, queuing next in line.");
+            }
             try {
-                JSONObject result = new JSONObject(resultJson);
-                sendDownload(downloadId, "active", 0, "Hazırlanıyor", result, callbackId, null);
-                Log.i(TAG, "download queued: " + result.optString("title") + " / " + result.optString("videoUrl"));
-                Uri savedUri;
-                try {
-                    savedUri = downloadWithYoutubeDl(downloadId, result, callbackId);
-                } catch (Exception ytDlpError) {
-                    ytDlpFailure = friendly(ytDlpError);
-                    Log.w(TAG, "yt-dlp failed, falling back to direct stream mp3: " + ytDlpFailure, ytDlpError);
-                    sendDownload(downloadId, "active", 5, "Alternatif MP3 indirme deneniyor", result, callbackId, null);
-                    savedUri = downloadDirectStreamAsMp3(downloadId, result, callbackId);
-                }
-                JSONObject savedSong = findSongByUri(savedUri);
-                sendDownload(downloadId, "completed", 100, "İndirme tamamlandı", savedSong == null ? result : savedSong, callbackId, null);
-            } catch (Exception error) {
-                String errorText = friendly(error);
-                if (ytDlpFailure != null && !ytDlpFailure.trim().isEmpty() && !ytDlpFailure.equals(errorText)) {
-                    errorText = errorText + " (yt-dlp: " + ytDlpFailure + ")";
-                }
-                Log.e(TAG, "download failed: " + errorText, error);
-                JSONObject fallback = new JSONObject();
+                String downloadId = (callbackId == null || callbackId.trim().isEmpty())
+                        ? "dl_" + System.currentTimeMillis()
+                        : (callbackId + "_" + java.util.UUID.randomUUID().toString().substring(0, 8));
+                String ytDlpFailure = null;
                 try {
                     JSONObject result = new JSONObject(resultJson);
-                    fallback = result;
-                } catch (Exception ignored) {
+                    sendDownload(downloadId, "active", 0, "Hazırlanıyor", result, callbackId, null);
+                    Log.i(TAG, "download queued: " + result.optString("title") + " / " + result.optString("videoUrl"));
+                    Uri savedUri;
+                    try {
+                        savedUri = downloadWithYoutubeDl(downloadId, result, callbackId);
+                    } catch (Throwable ytDlpError) {
+                        ytDlpFailure = friendly(ytDlpError);
+                        Log.w(TAG, "yt-dlp failed, falling back to direct stream mp3: " + ytDlpFailure, ytDlpError);
+                        sendDownload(downloadId, "active", 5, "Alternatif MP3 indirme deneniyor", result, callbackId, null);
+                        savedUri = downloadDirectStreamAsMp3(downloadId, result, callbackId);
+                    }
+                    JSONObject savedSong = findSongByUri(savedUri);
+                    sendDownload(downloadId, "completed", 100, "İndirme tamamlandı", savedSong == null ? result : savedSong, callbackId, null);
+                } catch (Throwable error) {
+                    String errorText = friendly(error);
+                    if (ytDlpFailure != null && !ytDlpFailure.trim().isEmpty() && !ytDlpFailure.equals(errorText)) {
+                        errorText = errorText + " (yt-dlp: " + ytDlpFailure + ")";
+                    }
+                    Log.e(TAG, "download failed: " + errorText, error);
+                    JSONObject fallback = new JSONObject();
+                    try {
+                        JSONObject result = new JSONObject(resultJson);
+                        fallback = result;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to parse fallback result json", e);
+                    }
+                    sendDownload(downloadId, "failed", 0, "İndirme başarısız", fallback, callbackId, errorText);
                 }
-                sendDownload(downloadId, "failed", 0, "İndirme başarısız", fallback, callbackId, errorText);
             } finally {
                 downloadRunning.set(false);
             }
@@ -690,10 +772,129 @@ final class FlownaBridge {
 
     @JavascriptInterface
     public String checkUpdate() {
-        JSONObject out = ok();
-        put(out, "status", "Güncel");
-        put(out, "message", "Uygulamanın yüklü sürümü güncel görünüyor.");
-        return out.toString();
+        try {
+            JSONObject release = fetchLatestRelease();
+            String latestVersion = normalizeVersion(release.optString("tag_name", release.optString("name", "")));
+            String currentVersion = normalizeVersion(versionName());
+            String apkUrl = findReleaseApkUrl(release);
+            JSONObject out = ok();
+            put(out, "currentVersion", currentVersion);
+            put(out, "latestVersion", latestVersion);
+            put(out, "updateAvailable", isNewerVersion(latestVersion, currentVersion));
+            if (!out.optBoolean("updateAvailable")) {
+                put(out, "status", "Güncel");
+                put(out, "message", "Uygulamanın yüklü sürümü güncel.");
+                return out.toString();
+            }
+            if (apkUrl.isEmpty()) {
+                put(out, "ok", false);
+                put(out, "error", "Yeni sürüm bulundu fakat APK dosyası eklenmemiş.");
+                return out.toString();
+            }
+            long downloadId = enqueueUpdateDownload(apkUrl, latestVersion);
+            put(out, "downloadQueued", true);
+            put(out, "downloadId", downloadId);
+            put(out, "message", "Yeni sürüm " + latestVersion + " bulundu. APK indiriliyor; indirme bitince bildirimden kurabilirsin.");
+            return out.toString();
+        } catch (Exception error) {
+            return fail("Güncelleme kontrolü başarısız: " + friendly(error)).toString();
+        }
+    }
+
+    @JavascriptInterface
+    public String checkLiveUpdate() {
+        try {
+            JSONObject manifest = fetchLiveUpdateManifest();
+            JSONObject out = ok();
+            String webVersion = manifest.optString("webVersion", "");
+            put(out, "currentWebVersion", currentWebVersion());
+            put(out, "latestWebVersion", webVersion);
+            put(out, "liveUpdateActive", isLiveUpdateActive());
+            put(out, "updateAvailable", !webVersion.isEmpty() && !webVersion.equals(currentWebVersion()));
+            put(out, "message", out.optBoolean("updateAvailable")
+                    ? "Yeni arayüz sürümü bulundu: " + webVersion
+                    : "Arayüz güncel.");
+            return out.toString();
+        } catch (Exception error) {
+            return fail("Arayüz güncellemesi kontrol edilemedi: " + friendly(error)).toString();
+        }
+    }
+
+    @JavascriptInterface
+    public String applyLiveUpdate() {
+        try {
+            JSONObject manifest = fetchLiveUpdateManifest();
+            String webVersion = manifest.optString("webVersion", "").trim();
+            String bundleUrl = manifest.optString("bundleUrl", "").trim();
+            String sha256 = manifest.optString("sha256", "").trim().toLowerCase(Locale.ROOT);
+            long minNativeVersionCode = manifest.optLong("minNativeVersionCode", 0L);
+
+            if (webVersion.isEmpty()) throw new IllegalStateException("webVersion eksik.");
+            if (bundleUrl.isEmpty()) throw new IllegalStateException("bundleUrl eksik.");
+            if (sha256.isEmpty()) throw new IllegalStateException("sha256 eksik.");
+            if (minNativeVersionCode > versionCode()) {
+                throw new IllegalStateException("Bu arayüz için daha yeni uygulama sürümü gerekiyor.");
+            }
+
+            File zip = new File(activity.getCacheDir(), "flowna-live-update.zip");
+            downloadToFile(bundleUrl, zip, MAX_LIVE_UPDATE_BYTES);
+            String actualHash = sha256(zip);
+            if (!sha256.equalsIgnoreCase(actualHash)) {
+                deleteDir(zip);
+                throw new IllegalStateException("Güncelleme doğrulaması başarısız.");
+            }
+
+            File root = liveUpdateRoot();
+            File temp = new File(root, "tmp_" + System.currentTimeMillis());
+            File target = new File(root, sanitizeFileName(webVersion));
+            deleteDir(temp);
+            if (!temp.mkdirs() && !temp.exists()) throw new IllegalStateException("Geçici klasör oluşturulamadı.");
+            unzipLiveBundle(zip, temp);
+            validateLiveBundle(temp);
+            deleteDir(target);
+            if (!temp.renameTo(target)) throw new IllegalStateException("Arayüz güncellemesi kaydedilemedi.");
+            deleteDir(zip);
+
+            activity.getSharedPreferences(LIVE_UPDATE_PREFS, Activity.MODE_PRIVATE)
+                    .edit()
+                    .putString(LIVE_WEB_VERSION_KEY, webVersion)
+                    .apply();
+            persistServerBasePath(target.getAbsolutePath());
+            activity.runOnUiThread(() -> {
+                if (activity.getBridge() != null) {
+                    activity.getBridge().setServerBasePath(target.getAbsolutePath());
+                }
+            });
+
+            JSONObject out = ok();
+            put(out, "webVersion", webVersion);
+            put(out, "liveUpdateActive", true);
+            put(out, "message", "Arayüz güncellendi.");
+            return out.toString();
+        } catch (Exception error) {
+            return fail("Arayüz güncellemesi uygulanamadı: " + friendly(error)).toString();
+        }
+    }
+
+    @JavascriptInterface
+    public String resetLiveUpdate() {
+        try {
+            clearPersistedServerBasePath();
+            activity.getSharedPreferences(LIVE_UPDATE_PREFS, Activity.MODE_PRIVATE).edit().clear().apply();
+            deleteDir(liveUpdateRoot());
+            activity.runOnUiThread(() -> {
+                if (activity.getBridge() != null) {
+                    activity.getBridge().setServerAssetPath("public");
+                }
+            });
+            JSONObject out = ok();
+            put(out, "webVersion", currentWebVersion());
+            put(out, "liveUpdateActive", false);
+            put(out, "message", "Paketli arayüze dönüldü.");
+            return out.toString();
+        } catch (Exception error) {
+            return fail("Arayüz sıfırlanamadı: " + friendly(error)).toString();
+        }
     }
 
     @JavascriptInterface
@@ -813,6 +1014,7 @@ final class FlownaBridge {
         io.shutdownNow();
         downloadIo.shutdownNow();
         timers.shutdownNow();
+        releaseWifiLock();
         if (player != null) {
             player.release();
             player = null;
@@ -825,6 +1027,7 @@ final class FlownaBridge {
             player.reset();
             player.setDataSource(activity, uri);
             attachPlayerListeners(song);
+            releaseWifiLock();
             player.prepareAsync();
             sendPlaybackEvent("loading", song);
         } catch (Exception error) {
@@ -838,6 +1041,7 @@ final class FlownaBridge {
             player.reset();
             player.setDataSource(streamUrl);
             attachPlayerListeners(song);
+            acquireWifiLock();
             player.prepareAsync();
             sendPlaybackEvent("loading", song);
         } catch (Exception error) {
@@ -850,15 +1054,60 @@ final class FlownaBridge {
             mp.start();
             sendPlaybackEvent("playing", song);
         });
-        player.setOnCompletionListener(mp -> sendPlaybackEvent("completed", song));
+        player.setOnCompletionListener(mp -> {
+            releaseWifiLock();
+            sendPlaybackEvent("completed", song);
+        });
         player.setOnErrorListener((mp, what, extra) -> {
             Log.w(TAG, "MediaPlayer reported error what=" + what + " extra=" + extra + " for " + song.optString("title", ""));
+            releaseWifiLock();
             return true;
         });
     }
 
     private void ensurePlayer() {
-        if (player == null) player = new MediaPlayer();
+        if (player == null) {
+            player = new MediaPlayer();
+            try {
+                player.setWakeMode(activity.getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to set wake mode: " + e.getMessage());
+            }
+        }
+    }
+
+    private void acquireWifiLock() {
+        try {
+            if (wifiLock == null) {
+                WifiManager wifiManager = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wifiManager != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Flowna:WifiLock");
+                    } else {
+                        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "Flowna:WifiLock");
+                    }
+                }
+            }
+            if (wifiLock != null && !wifiLock.isHeld()) {
+                wifiLock.acquire();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to acquire WifiLock: " + e.getMessage());
+        }
+    }
+
+    private void releaseWifiLock() {
+        try {
+            if (wifiLock != null && wifiLock.isHeld()) {
+                wifiLock.release();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to release WifiLock: " + e.getMessage());
+        }
+    }
+
+    private boolean isCurrentTrackOnline() {
+        return currentTrack != null && "online".equals(currentTrack.optString("source"));
     }
 
     private JSONArray querySongs(boolean onlyDownloaded) {
@@ -1064,16 +1313,22 @@ final class FlownaBridge {
     }
 
     private byte[] downloadArtworkBytes(String url) {
+        HttpURLConnection connection = null;
         try {
-            URLConnection connection = new URL(url).openConnection();
+            connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(15000);
             connection.setRequestProperty("User-Agent", "Mozilla/5.0");
             try (InputStream input = connection.getInputStream()) {
                 return readFully(input, 2 * 1024 * 1024);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.e(TAG, "downloadArtworkBytes failed for URL: " + url + " - Error: " + friendly(e), e);
             return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -1134,6 +1389,228 @@ final class FlownaBridge {
         return text.toString();
     }
 
+    private static String readTextFromUrl(String url) throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(12000);
+            connection.setRequestProperty("User-Agent", "FlownaMusicPlayer");
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) throw new java.io.IOException("HTTP " + code);
+            return readText(connection);
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private static void downloadToFile(String url, File target, int maxBytes) throws Exception {
+        HttpURLConnection connection = null;
+        deleteDir(target);
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IllegalStateException("İndirme klasörü oluşturulamadı.");
+        }
+        try {
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(20000);
+            connection.setRequestProperty("User-Agent", "FlownaMusicPlayer");
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) throw new java.io.IOException("HTTP " + code);
+            int total = 0;
+            byte[] buffer = new byte[32 * 1024];
+            try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(target, false)) {
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    total += read;
+                    if (total > maxBytes) throw new IllegalStateException("Güncelleme paketi çok büyük.");
+                    output.write(buffer, 0, read);
+                }
+            }
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private static String sha256(File file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] buffer = new byte[32 * 1024];
+        try (InputStream input = new FileInputStream(file)) {
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest.digest()) {
+            hex.append(String.format(Locale.ROOT, "%02x", b & 0xff));
+        }
+        return hex.toString();
+    }
+
+    private static void unzipLiveBundle(File zip, File targetDir) throws Exception {
+        String rootPath = targetDir.getCanonicalPath() + File.separator;
+        byte[] buffer = new byte[32 * 1024];
+        try (ZipInputStream input = new ZipInputStream(new FileInputStream(zip))) {
+            ZipEntry entry;
+            while ((entry = input.getNextEntry()) != null) {
+                File output = new File(targetDir, entry.getName());
+                String outputPath = output.getCanonicalPath();
+                if (!outputPath.startsWith(rootPath)) {
+                    throw new IllegalStateException("Güncelleme paketi güvenli değil.");
+                }
+                if (entry.isDirectory()) {
+                    if (!output.exists() && !output.mkdirs()) throw new IllegalStateException("Klasör oluşturulamadı.");
+                    continue;
+                }
+                File parent = output.getParentFile();
+                if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                    throw new IllegalStateException("Klasör oluşturulamadı.");
+                }
+                try (FileOutputStream fileOutput = new FileOutputStream(output, false)) {
+                    int read;
+                    while ((read = input.read(buffer)) != -1) {
+                        fileOutput.write(buffer, 0, read);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void validateLiveBundle(File dir) {
+        File index = new File(dir, "index.html");
+        File app = new File(dir, "app.js");
+        if (!index.isFile() || index.length() <= 0) throw new IllegalStateException("index.html eksik.");
+        if (!app.isFile() || app.length() <= 0) throw new IllegalStateException("app.js eksik.");
+    }
+
+    private JSONObject fetchLatestRelease() throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(UPDATE_API_URL).openConnection();
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(12000);
+            connection.setRequestProperty("Accept", "application/vnd.github+json");
+            connection.setRequestProperty("User-Agent", "FlownaMusicPlayer/" + versionName());
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new java.io.IOException("GitHub yanıtı: HTTP " + code);
+            }
+            return new JSONObject(readText(connection));
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private JSONObject fetchLiveUpdateManifest() throws Exception {
+        JSONObject release = fetchLatestRelease();
+        String manifestUrl = findReleaseAssetUrl(release, LIVE_UPDATE_MANIFEST_ASSET);
+        if (manifestUrl.isEmpty()) {
+            throw new IllegalStateException("Canlı arayüz manifest dosyası release içinde bulunamadı.");
+        }
+        JSONObject manifest = new JSONObject(readTextFromUrl(manifestUrl));
+        String webVersion = manifest.optString("webVersion", "").trim();
+        if (webVersion.isEmpty()) throw new IllegalStateException("Canlı arayüz sürümü eksik.");
+        if (manifest.optString("bundleUrl", "").trim().isEmpty()) {
+            String bundleUrl = findLiveBundleUrl(release, webVersion);
+            if (!bundleUrl.isEmpty()) put(manifest, "bundleUrl", bundleUrl);
+        }
+        return manifest;
+    }
+
+    private String findReleaseAssetUrl(JSONObject release, String assetName) {
+        JSONArray assets = release.optJSONArray("assets");
+        if (assets == null) return "";
+        for (int i = 0; i < assets.length(); i++) {
+            JSONObject asset = assets.optJSONObject(i);
+            if (asset == null) continue;
+            String name = asset.optString("name", "");
+            String url = asset.optString("browser_download_url", "");
+            if (assetName.equalsIgnoreCase(name) && !url.isEmpty()) return url;
+        }
+        return "";
+    }
+
+    private String findLiveBundleUrl(JSONObject release, String webVersion) {
+        JSONArray assets = release.optJSONArray("assets");
+        if (assets == null) return "";
+        String version = webVersion.toLowerCase(Locale.ROOT);
+        for (int i = 0; i < assets.length(); i++) {
+            JSONObject asset = assets.optJSONObject(i);
+            if (asset == null) continue;
+            String name = asset.optString("name", "").toLowerCase(Locale.ROOT);
+            String url = asset.optString("browser_download_url", "");
+            if (name.endsWith(".zip") && name.startsWith("flowna-www-") && name.contains(version) && !url.isEmpty()) {
+                return url;
+            }
+        }
+        return "";
+    }
+
+    private String findReleaseApkUrl(JSONObject release) {
+        JSONArray assets = release.optJSONArray("assets");
+        if (assets == null) return "";
+        for (int i = 0; i < assets.length(); i++) {
+            JSONObject asset = assets.optJSONObject(i);
+            if (asset == null) continue;
+            String name = asset.optString("name", "").toLowerCase(Locale.ROOT);
+            String url = asset.optString("browser_download_url", "");
+            if (name.endsWith(".apk") && !url.isEmpty()) return url;
+        }
+        return "";
+    }
+
+    private long enqueueUpdateDownload(String apkUrl, String version) {
+        DownloadManager manager = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (manager == null) throw new IllegalStateException("DownloadManager kullanılamıyor");
+        String safeVersion = sanitizeFileName(version.isEmpty() ? "update" : version);
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl))
+                .setTitle("Flowna Music Player " + safeVersion)
+                .setDescription("Uygulama güncellemesi indiriliyor")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true);
+        request.setDestinationInExternalPublicDir(
+                Environment.DIRECTORY_DOWNLOADS,
+                "flowna-" + safeVersion + ".apk"
+        );
+        return manager.enqueue(request);
+    }
+
+    private static String normalizeVersion(String value) {
+        String version = value == null ? "" : value.trim();
+        if (version.startsWith("v") || version.startsWith("V")) version = version.substring(1);
+        Matcher matcher = Pattern.compile("(\\d+(?:\\.\\d+){0,3})").matcher(version);
+        return matcher.find() ? matcher.group(1) : version;
+    }
+
+    private static boolean isNewerVersion(String latest, String current) {
+        int[] next = parseVersionParts(latest);
+        int[] installed = parseVersionParts(current);
+        for (int i = 0; i < Math.max(next.length, installed.length); i++) {
+            int a = i < next.length ? next[i] : 0;
+            int b = i < installed.length ? installed[i] : 0;
+            if (a != b) return a > b;
+        }
+        return false;
+    }
+
+    private static int[] parseVersionParts(String value) {
+        String version = normalizeVersion(value);
+        String[] raw = version.split("\\.");
+        int[] parts = new int[Math.max(1, raw.length)];
+        for (int i = 0; i < raw.length; i++) {
+            try {
+                parts[i] = Integer.parseInt(raw[i].replaceAll("[^0-9]", ""));
+            } catch (Exception ignored) {
+                parts[i] = 0;
+            }
+        }
+        return parts;
+    }
+
     private static String toDataUri(byte[] bytes) {
         String prefix = "data:" + imageMimeType(bytes) + ";base64,";
         return prefix + Base64.encodeToString(bytes, Base64.NO_WRAP);
@@ -1169,6 +1646,37 @@ final class FlownaBridge {
 
     private interface SearchProvider {
         JSONArray load() throws Exception;
+    }
+
+    private JSONArray loadYoutubeSuggestions(String query) throws Exception {
+        String q = query == null ? "" : query.trim();
+        JSONArray out = new JSONArray();
+        if (q.length() < 3) return out;
+
+        String encoded = URLEncoder.encode(q, "UTF-8");
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL("https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=" + encoded);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(6000);
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
+            connection.setRequestProperty("Accept-Language", "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7");
+            JSONArray payload = new JSONArray(readText(connection));
+            JSONArray suggestions = payload.optJSONArray(1);
+            if (suggestions == null) return out;
+            LinkedHashSet<String> seen = new LinkedHashSet<>();
+            for (int i = 0; i < suggestions.length() && out.length() < 8; i++) {
+                String suggestion = suggestions.optString(i, "").trim();
+                String key = suggestion.toLowerCase(Locale.ROOT);
+                if (suggestion.isEmpty() || seen.contains(key)) continue;
+                seen.add(key);
+                out.put(suggestion);
+            }
+            return out;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
     }
 
     private void collectSearchResults(
@@ -1268,24 +1776,31 @@ final class FlownaBridge {
 
     private JSONArray searchWithYoutubeHtml(String query) throws Exception {
         String encoded = URLEncoder.encode(query, "UTF-8");
-        URLConnection connection = new URL("https://www.youtube.com/results?search_query=" + encoded).openConnection();
-        connection.setConnectTimeout(8000);
-        connection.setReadTimeout(8000);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
-        connection.setRequestProperty("Accept-Language", "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7");
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL("https://www.youtube.com/results?search_query=" + encoded).openConnection();
+            connection.setConnectTimeout(8000);
+            connection.setReadTimeout(8000);
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
+            connection.setRequestProperty("Accept-Language", "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7");
 
-        String html = readText(connection);
-        String initialData = extractAssignedJson(html, "var ytInitialData = ");
-        if (initialData.isEmpty()) {
-            initialData = extractAssignedJson(html, "ytInitialData = ");
+            String html = readText(connection);
+            String initialData = extractAssignedJson(html, "var ytInitialData = ");
+            if (initialData.isEmpty()) {
+                initialData = extractAssignedJson(html, "ytInitialData = ");
+            }
+            if (initialData.isEmpty()) {
+                throw new IllegalStateException("YouTube arama verisi bulunamadi.");
+            }
+            JSONArray results = new JSONArray();
+            LinkedHashSet<String> seen = new LinkedHashSet<>();
+            collectVideoRenderers(new JSONObject(initialData), results, seen);
+            return results;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
-        if (initialData.isEmpty()) {
-            throw new IllegalStateException("YouTube arama verisi bulunamadi.");
-        }
-        JSONArray results = new JSONArray();
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        collectVideoRenderers(new JSONObject(initialData), results, seen);
-        return results;
     }
 
     private void collectVideoRenderers(Object node, JSONArray results, LinkedHashSet<String> seen) {
@@ -1377,8 +1892,8 @@ final class FlownaBridge {
         String videoUrl = normalizeVideoUrl(rawVideoUrl, "");
         try {
             return resolveAudioStreamWithYoutubeDl(videoUrl);
-        } catch (Exception ignored) {
-            // NewPipe is a useful fallback when yt-dlp cannot expose a direct stream.
+        } catch (Exception e) {
+            Log.w(TAG, "resolveAudioStreamWithYoutubeDl failed, falling back to NewPipe: " + friendly(e), e);
         }
         return resolveAudioStreamWithNewPipe(videoUrl);
     }
@@ -1387,8 +1902,12 @@ final class FlownaBridge {
         ensureNewPipe();
         StreamExtractor extractor = ServiceList.YouTube.getStreamExtractor(videoUrl);
         extractor.fetchPage();
+        List<AudioStream> streams = extractor.getAudioStreams();
+        if (streams == null) {
+            throw new IllegalStateException("Ses akış listesi bulunamadı.");
+        }
         AudioStream best = null;
-        for (AudioStream stream : extractor.getAudioStreams()) {
+        for (AudioStream stream : streams) {
             if (stream == null || stream.getUrl() == null || stream.getUrl().isEmpty()) continue;
             if (best == null || stream.getAverageBitrate() > best.getAverageBitrate()) {
                 best = stream;
@@ -1569,29 +2088,36 @@ final class FlownaBridge {
     }
 
     private void downloadStreamToFile(String downloadId, JSONObject result, String streamUrl, File target, String callbackId) throws Exception {
-        URLConnection connection = new URL(streamUrl).openConnection();
-        connection.setConnectTimeout(30000);
-        connection.setReadTimeout(30000);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
-        long total = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                ? Math.max(0, connection.getContentLengthLong())
-                : Math.max(0, connection.getContentLength());
-        long copied = 0L;
-        byte[] buffer = new byte[64 * 1024];
-        try (InputStream input = connection.getInputStream();
-             OutputStream output = new FileOutputStream(target)) {
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                output.write(buffer, 0, read);
-                copied += read;
-                if (total > 0) {
-                    int progress = 8 + (int) Math.min(64, (copied * 64) / total);
-                    sendDownload(downloadId, "active", progress, "Ses indiriliyor", result, callbackId, null);
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(streamUrl).openConnection();
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(30000);
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
+            long total = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                    ? Math.max(0, connection.getContentLengthLong())
+                    : Math.max(0, connection.getContentLength());
+            long copied = 0L;
+            byte[] buffer = new byte[64 * 1024];
+            try (InputStream input = connection.getInputStream();
+                 OutputStream output = new FileOutputStream(target)) {
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    copied += read;
+                    if (total > 0) {
+                        int progress = 8 + (int) Math.min(64, (copied * 64) / total);
+                        sendDownload(downloadId, "active", progress, "Ses indiriliyor", result, callbackId, null);
+                    }
                 }
             }
-        }
-        if (!target.exists() || target.length() <= 0) {
-            throw new IllegalStateException("Ses akışı indirilemedi.");
+            if (!target.exists() || target.length() <= 0) {
+                throw new IllegalStateException("Ses akışı indirilemedi.");
+            }
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -1651,7 +2177,7 @@ final class FlownaBridge {
         Process process = builder.start();
         StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(90);
+            long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(180);
             while (true) {
                 while (reader.ready()) {
                     String line = reader.readLine();
@@ -1665,7 +2191,11 @@ final class FlownaBridge {
                     break;
                 } catch (IllegalThreadStateException running) {
                     if (System.currentTimeMillis() > deadline) {
-                        process.destroy();
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            process.destroyForcibly();
+                        } else {
+                            process.destroy();
+                        }
                         throw new IllegalStateException("MP3 dönüşümü zaman aşımına uğradı.");
                     }
                     Thread.sleep(160L);
@@ -1693,7 +2223,8 @@ final class FlownaBridge {
                 output.write(bytes);
             }
             return file;
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            Log.e(TAG, "writeTempArtworkFile failed: " + friendly(error), error);
             return null;
         }
     }
@@ -1799,8 +2330,9 @@ final class FlownaBridge {
         Uri uri = activity.getContentResolver().insert(collection, values);
         if (uri == null) throw new IllegalStateException("Medya kaydı oluşturulamadı.");
 
+        HttpURLConnection connection = null;
         try {
-            URLConnection connection = new URL(payload.url).openConnection();
+            connection = (HttpURLConnection) new URL(payload.url).openConnection();
             connection.setConnectTimeout(30000);
             connection.setReadTimeout(30000);
             long total = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
@@ -1831,6 +2363,10 @@ final class FlownaBridge {
         } catch (Exception error) {
             activity.getContentResolver().delete(uri, null, null);
             throw error;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -2365,12 +2901,42 @@ final class FlownaBridge {
         return total;
     }
 
+    private File liveUpdateRoot() {
+        return new File(activity.getFilesDir(), "live-updates");
+    }
+
+    private boolean isLiveUpdateActive() {
+        return !activity.getSharedPreferences(LIVE_UPDATE_PREFS, Activity.MODE_PRIVATE)
+                .getString(LIVE_WEB_VERSION_KEY, "")
+                .isEmpty();
+    }
+
+    private String currentWebVersion() {
+        String liveVersion = activity.getSharedPreferences(LIVE_UPDATE_PREFS, Activity.MODE_PRIVATE)
+                .getString(LIVE_WEB_VERSION_KEY, "");
+        return liveVersion == null || liveVersion.isEmpty() ? versionName() + "-bundled" : liveVersion;
+    }
+
+    private void persistServerBasePath(String path) {
+        activity.getSharedPreferences("CapWebViewSettings", Activity.MODE_PRIVATE)
+                .edit()
+                .putString("serverBasePath", path)
+                .apply();
+    }
+
+    private void clearPersistedServerBasePath() {
+        activity.getSharedPreferences("CapWebViewSettings", Activity.MODE_PRIVATE)
+                .edit()
+                .remove("serverBasePath")
+                .apply();
+    }
+
     private String versionName() {
         try {
             PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-            return info.versionName == null ? "1.0.22" : info.versionName;
+            return info.versionName == null ? "1.0.25" : info.versionName;
         } catch (Exception ignored) {
-            return "1.0.22";
+            return "1.0.25";
         }
     }
 

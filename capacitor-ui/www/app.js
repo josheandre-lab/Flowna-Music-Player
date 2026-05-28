@@ -26,15 +26,16 @@ const state = {
   permissionGranted: false,
   notificationPermission: false,
   manageStoragePermission: false,
-  versionName: "1.0.22",
-  versionCode: 23,
+  versionName: "1.0.25",
+  versionCode: 25,
+  webVersion: "1.0.25-bundled",
+  liveUpdateActive: false,
   songs: [],
   downloadedSongs: [],
-  search: { query: "", loading: false, results: [], error: "", callbackId: "" },
+  search: { query: "", loading: false, results: [], error: "", callbackId: "", suggestions: [], suggestionsLoading: false, suggestionsError: "", suggestionsCallbackId: "" },
   recent: loadJson("flowna_recent_searches", []),
   downloads: loadJson("flowna_downloads", []),
   failedDownloads: loadJson("flowna_failed_downloads", []),
-  activeDownloadKeys: new Set(),
   playStats: loadJson("flowna_play_stats", {}),
   coverCache: loadJson("flowna_cover_cache", {}),
   coverMisses: loadJson("flowna_cover_misses", {}),
@@ -63,6 +64,7 @@ const state = {
   playerDrag: null,
   toastTimer: null,
   searchTimer: null,
+  suggestTimer: null,
   searchWatchdog: null,
   pollTimer: null,
   registry: new Map()
@@ -354,6 +356,8 @@ function updateFromNativePayload(payload) {
   if (typeof payload.manageStoragePermission === "boolean") state.manageStoragePermission = payload.manageStoragePermission;
   if (payload.versionName) state.versionName = payload.versionName;
   if (payload.versionCode) state.versionCode = payload.versionCode;
+  if (payload.webVersion) state.webVersion = payload.webVersion;
+  if (typeof payload.liveUpdateActive === "boolean") state.liveUpdateActive = payload.liveUpdateActive;
   if (payload.settings && typeof payload.settings === "object") {
     state.settings = Object.assign(state.settings, payload.settings);
   }
@@ -425,7 +429,7 @@ function init() {
   setTimeout(() => {
     $("splash")?.classList.add("off");
     setTimeout(() => Native.call("warmupDownloadEngine"), 450);
-  }, Math.max(3000 - (Date.now() - SPLASH_STARTED_AT), 0));
+  }, Math.max(3600 - (Date.now() - SPLASH_STARTED_AT), 0));
 }
 
 function renderAll() {
@@ -592,7 +596,7 @@ function playTrack(key, options = {}) {
     toast(result.error || "Şarkı başlatılamadı.");
   } else {
     bumpPlayStat(track);
-    toast(`${track.title} çalıyor`);
+    // toast(`${track.title} çalıyor`);
   }
   renderMini();
   if (!$("player").classList.contains("off") || !options.keepScreen) renderPlayer();
@@ -928,6 +932,10 @@ function renderSearchSuggestions(query) {
   const q = String(query || "").trim().toLowerCase();
   if (q.length < 1) return "";
 
+  const youtube = state.search.suggestions.length
+    ? `<div class="stlbl">YouTube önerileri</div><div class="chips">${state.search.suggestions.map((item) => `<div class="chip" onclick="setSearch('${esc(item)}')">${esc(item)}</div>`).join("")}</div>`
+    : (state.search.suggestionsLoading ? `<div class="stlbl">YouTube önerileri</div><div class="chips"><div class="chip">Öneriler alınıyor...</div></div>` : "");
+
   const recentMatches = state.recent
     .filter((x) => String(x || "").toLowerCase().startsWith(q))
     .slice(0, 6);
@@ -940,7 +948,7 @@ function renderSearchSuggestions(query) {
     })
     .slice(0, 6);
 
-  if (!recentMatches.length && !localMatches.length) return "";
+  if (!youtube && !recentMatches.length && !localMatches.length) return "";
 
   const chips = recentMatches.length
     ? `<div class="stlbl">Tahminler</div><div class="chips">${recentMatches.map((item) => `<div class="chip" onclick="setSearch('${esc(item)}')">${esc(item)}</div>`).join("")}</div>`
@@ -950,7 +958,7 @@ function renderSearchSuggestions(query) {
     ? `<div class="stlbl">Yerel eşleşmeler</div>${localMatches.map((song, i) => songCard(song, i)).join("")}`
     : "";
 
-  return `${chips}${locals}`;
+  return `${youtube}${chips}${locals}`;
 }
 
 function updateSearchBody() {
@@ -986,6 +994,7 @@ function onSearchInput(value) {
   state.search.query = value;
   state.search.error = "";
   clearTimeout(state.searchTimer);
+  queueSearchSuggestions(value);
   if (value.trim().length > 1) {
     state.search.loading = true;
     state.searchTimer = setTimeout(runSearch, 450);
@@ -1006,7 +1015,8 @@ function setSearch(value) {
 }
 
 function clearSearch() {
-  state.search = { query: "", loading: false, results: [], error: "", callbackId: "" };
+  clearTimeout(state.suggestTimer);
+  state.search = { query: "", loading: false, results: [], error: "", callbackId: "", suggestions: [], suggestionsLoading: false, suggestionsError: "", suggestionsCallbackId: "" };
   const input = $("sinp");
   if (input) {
     input.value = "";
@@ -1014,6 +1024,29 @@ function clearSearch() {
   }
   updateSearchClear();
   updateSearchBody();
+}
+
+function queueSearchSuggestions(value) {
+  clearTimeout(state.suggestTimer);
+  const q = String(value || "").trim();
+  state.search.suggestionsError = "";
+  if (q.length < 3) {
+    state.search.suggestions = [];
+    state.search.suggestionsLoading = false;
+    state.search.suggestionsCallbackId = "";
+    return;
+  }
+  state.search.suggestionsLoading = true;
+  state.search.suggestionsCallbackId = "suggest_" + Date.now();
+  const callbackId = state.search.suggestionsCallbackId;
+  state.suggestTimer = setTimeout(() => {
+    const result = Native.call("searchSuggestions", q, callbackId);
+    if (!result.ok && state.search.suggestionsCallbackId === callbackId) {
+      state.search.suggestionsLoading = false;
+      state.search.suggestionsError = result.error || "Öneriler alınamadı.";
+      updateSearchBody();
+    }
+  }, 280);
 }
 
 function runSearch() {
@@ -1132,6 +1165,13 @@ function renderDownloads() {
   const completed = state.downloads.filter((item) => item.status === "completed");
   const failed = state.failedDownloads;
   const list = state.dlTab === "active" ? active : state.dlTab === "done" ? completed : failed;
+  const clearBtnHtml = (state.dlTab === "fail" && failed.length)
+    ? `<div style="padding: 0 24px 12px; display: flex; justify-content: flex-end;">
+        <button class="dlb dlcancel" onclick="clearFailedDownloads()" style="margin: 0; padding: 6px 14px; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+          Başarısızları Temizle
+        </button>
+       </div>`
+    : "";
   el.innerHTML = `<div class="shdr">
       <div class="stitle">İndirmeler</div>
       <div class="ssub">${active.length} aktif · ${completed.length} tamamlandı · ${failed.length} başarısız</div>
@@ -1142,10 +1182,18 @@ function renderDownloads() {
         <button class="tbtn ${state.dlTab === "done" ? "on" : ""}" onclick="setDlTab('done')">Tamamlandı</button>
         <button class="tbtn ${state.dlTab === "fail" ? "on" : ""}" onclick="setDlTab('fail')">Başarısız</button>
       </div>
+      ${clearBtnHtml}
       ${list.length ? list.map(downloadCard).join("") : emptyBlock(state.dlTab === "active" ? "Aktif indirme yok" : "Bu bölüm boş", "Arama ekranından bir şarkı indirerek listeyi doldurabilirsin.", icon("download", 48))}
     </div>`;
   const nextScroll = el?.querySelector?.(".scroll");
   if (nextScroll && prevScrollTop) nextScroll.scrollTop = prevScrollTop;
+}
+
+function clearFailedDownloads() {
+  state.failedDownloads = [];
+  saveJson("flowna_failed_downloads", state.failedDownloads);
+  renderDownloads();
+  toast("Başarısız indirmeler temizlendi.");
 }
 
 function downloadCard(item, index) {
@@ -1170,35 +1218,42 @@ function setDlTab(tab) {
   renderDownloads();
 }
 
+function isDownloading(sourceKey) {
+  return state.downloads.some((item) => item.status === "active" && (item.sourceKey === sourceKey || keyOf(item.track) === sourceKey));
+}
+
 function startDownload(key) {
-  const track = findTrack(key);
-  if (!track) return;
-  if (!track.videoUrl && track.source === "online") {
-    toast("Bu sonuç için indirme bağlantısı bulunamadı.");
-    return;
-  }
-  const sourceKey = keyOf(track);
-  const active = state.downloads.find((item) => item.status === "active" && (item.sourceKey === sourceKey || keyOf(item.track) === sourceKey));
-  if (active || state.activeDownloadKeys.has(sourceKey)) {
-    toast("Bu şarkı zaten indiriliyor.");
+  try {
+    const track = findTrack(key);
+    if (!track) return;
+    if (!track.videoUrl && track.source === "online") {
+      toast("Bu sonuç için indirme bağlantısı bulunamadı.");
+      return;
+    }
+    const sourceKey = keyOf(track);
+    if (isDownloading(sourceKey)) {
+      toast("Bu şarkı zaten indiriliyor.");
+      state.dlTab = "active";
+      if (state.screen !== "downloads") goScreen("downloads");
+      else renderDownloads();
+      return;
+    }
+    const callbackId = "dl_" + Date.now() + "_" + Math.floor(Math.random() * 1000000);
+    upsertDownload({ id: callbackId, sourceKey, status: "active", progress: 0, message: "Sıraya alındı", track });
     state.dlTab = "active";
     if (state.screen !== "downloads") goScreen("downloads");
     else renderDownloads();
-    return;
-  }
-  const callbackId = "dl_" + Date.now();
-  state.activeDownloadKeys.add(sourceKey);
-  upsertDownload({ id: callbackId, sourceKey, status: "active", progress: 0, message: "Sıraya alındı", track });
-  state.dlTab = "active";
-  if (state.screen !== "downloads") goScreen("downloads");
-  else renderDownloads();
-  const result = Native.call("startDownload", JSON.stringify(track), callbackId);
-  if (!result.ok) {
-    state.activeDownloadKeys.delete(sourceKey);
-    upsertFailed({ id: callbackId, sourceKey, status: "failed", progress: 0, message: "Başarısız", error: result.error, track });
-    renderDownloads();
-  } else {
-    toast("İndirme başlatıldı.");
+    const result = Native.call("startDownload", JSON.stringify(track), callbackId);
+    if (!result || !result.ok) {
+      state.downloads = state.downloads.filter((dl) => dl.id !== callbackId);
+      upsertFailed({ id: callbackId, sourceKey, status: "failed", progress: 0, message: "Başarısız", error: (result && result.error) || "Yerel köprü hatası", track });
+      renderDownloads();
+    } else {
+      toast("İndirme başlatıldı.");
+    }
+  } catch (error) {
+    console.error("startDownload error:", error);
+    toast("İndirme başlatılırken bir hata oluştu: " + error.message);
   }
 }
 
@@ -1211,6 +1266,7 @@ function renderSettings() {
       <div class="aicard au">
         <div class="ailogo"><img src="flowna-logo.png" alt="Flowna logo"></div>
         <div class="ainame">Flowna Music Player</div>
+        <div class="aiver">Arayüz ${esc(state.webVersion)}${state.liveUpdateActive ? " · Canlı" : " · Paketli"}</div>
         <div class="aiver">Sürüm ${esc(state.versionName)} · Kod ${esc(state.versionCode)}</div>
         <div class="vbs"><span class="vb vok">Güncel</span><span class="vb vgray">${state.songs.length} şarkı</span></div>
       </div>
@@ -1224,7 +1280,9 @@ function renderSettings() {
       <div class="ss" style="margin-top:14px"><div class="ssl">Güncellemeler</div><div class="sg">
         <div class="sr"><div class="srico" style="background:rgba(79,70,229,.1)">${icon("settings", 17)}</div><div class="sri"><div class="srt">Otomatik Kontrol</div><div class="srs">Açılışta sürüm bilgisi kontrol edilir</div></div>${sw("autoUp")}</div>
         <div class="sr" onclick="checkYtDlpUpdate()"><div class="srico" style="background:rgba(0,200,150,.1)">${icon("download", 17)}</div><div class="sri"><div class="srt">yt-dlp’yi Güncelle</div><div class="srs">İndirme motorunu günceller</div></div><div class="srr">›</div></div>
-        <div class="sr" onclick="checkUpdate()"><div class="srico" style="background:rgba(255,107,74,.1)">${icon("search", 17)}</div><div class="sri"><div class="srt">Güncellemeyi Kontrol Et</div><div class="srs">Kullanıcıya repo adresi gösterilmez</div></div><div class="srr">›</div></div>
+        <div class="sr" onclick="checkUpdate()"><div class="srico" style="background:rgba(255,107,74,.1)">${icon("search", 17)}</div><div class="sri"><div class="srt">Uygulama Güncellemesi</div><div class="srs">Native değişiklik varsa APK indirir</div></div><div class="srr">›</div></div>
+        <div class="sr" onclick="applyLiveUpdate()"><div class="srico" style="background:rgba(138,92,255,.1)">${icon("download", 17)}</div><div class="sri"><div class="srt">Arayüz Güncellemesi</div><div class="srs">APK kurmadan canlı UI paketini indirir</div></div><div class="srr">›</div></div>
+        ${state.liveUpdateActive ? `<div class="sr" onclick="resetLiveUpdate()"><div class="srico" style="background:rgba(239,68,68,.1)">${icon("close", 17)}</div><div class="sri"><div class="srt">Paketli Arayüze Dön</div><div class="srs">Canlı UI paketini sıfırlar</div></div><div class="srr">›</div></div>` : ""}
       </div></div>
       <div class="ss" style="margin-top:14px"><div class="ssl">Kütüphane</div><div class="sg">
         <div class="sr" onclick="refreshLibrary(true)"><div class="srico" style="background:rgba(0,200,150,.1)">${icon("library", 17)}</div><div class="sri"><div class="srt">Kütüphaneyi Yeniden Tara</div><div class="srs">Cihazdaki müzikleri günceller</div></div><div class="srr">›</div></div>
@@ -1267,7 +1325,38 @@ function saveSettings(show = true) {
 
 function checkUpdate() {
   const result = Native.call("checkUpdate");
-  toast(result.message || result.status || "Güncelleme kontrol edildi.");
+  if (!result.ok) toast(result.error || "Güncelleme kontrol edilemedi.");
+  else toast(result.message || result.status || "Güncelleme kontrol edildi.");
+}
+
+function applyLiveUpdate() {
+  const check = Native.call("checkLiveUpdate");
+  if (!check.ok) {
+    toast(check.error || "Arayüz güncellemesi kontrol edilemedi.");
+    return;
+  }
+  if (!check.updateAvailable) {
+    toast(check.message || "Arayüz güncel.");
+    return;
+  }
+  toast("Arayüz güncellemesi indiriliyor...");
+  const result = Native.call("applyLiveUpdate");
+  if (!result.ok) {
+    toast(result.error || "Arayüz güncellemesi uygulanamadı.");
+    return;
+  }
+  updateFromNativePayload(result);
+  toast(result.message || "Arayüz güncellendi.");
+}
+
+function resetLiveUpdate() {
+  const result = Native.call("resetLiveUpdate");
+  if (!result.ok) {
+    toast(result.error || "Arayüz sıfırlanamadı.");
+    return;
+  }
+  updateFromNativePayload(result);
+  toast(result.message || "Paketli arayüze dönüldü.");
 }
 
 function checkYtDlpUpdate() {
@@ -1283,17 +1372,27 @@ function clearCache() {
 }
 
 function openPreview(key) {
-  const track = findTrack(key);
-  if (!track) return;
-  state.preview = { track, status: "loading", progress: 0, playing: true };
-  renderPreview();
-  $("pov").classList.remove("off");
-  if (track.source === "online") {
-    const callbackId = "prev_" + Date.now();
-    state.preview.callbackId = callbackId;
-    Native.call("startPreview", JSON.stringify(track), callbackId);
-  } else {
-    playTrack(key);
+  try {
+    const track = findTrack(key);
+    if (!track) return;
+    state.preview = { track, status: "loading", progress: 0, playing: true };
+    renderPreview();
+    $("pov").classList.remove("off");
+    if (track.source === "online") {
+      const callbackId = "prev_" + Date.now();
+      state.preview.callbackId = callbackId;
+      const result = Native.call("startPreview", JSON.stringify(track), callbackId);
+      if (result && !result.ok) {
+        closePrev();
+        toast(result.error || "Önizleme başlatılamadı.");
+      }
+    } else {
+      playTrack(key);
+    }
+  } catch (error) {
+    console.error("openPreview error:", error);
+    closePrev();
+    toast("Önizleme başlatılırken bir hata oluştu: " + error.message);
   }
 }
 
@@ -1359,7 +1458,7 @@ function legacyHandleNativeEvent(event) {
       if (event.ok) {
         state.preview.status = "ready";
         state.preview.track = Object.assign(state.preview.track, event.track || {});
-        toast("Önizleme başladı.");
+        // toast("Önizleme başladı.");
       } else {
         toast(event.error || "Önizleme başlatılamadı.");
         closePrev();
@@ -1397,7 +1496,6 @@ function legacyHandleNativeEvent(event) {
       track
     };
     if (event.status === "failed") {
-      state.activeDownloadKeys.delete(sourceKey);
       state.downloads = state.downloads.filter((dl) => dl.id !== item.id);
       saveJson("flowna_downloads", state.downloads);
       upsertFailed(item);
@@ -1406,7 +1504,6 @@ function legacyHandleNativeEvent(event) {
     }
     if (event.status === "failed") toast(item.error || "İndirme başarısız oldu.");
     if (event.status === "completed") {
-      state.activeDownloadKeys.delete(sourceKey);
       toast("İndirme tamamlandı.");
       refreshLibrary(false);
     }
@@ -1504,21 +1601,26 @@ function startPlaybackPolling() {
 }
 
 function deleteTrack(key) {
-  const track = findTrack(key);
-  if (!track?.uri) return toast("Bu parça için silme kullanılamıyor.");
-  const result = Native.call("deleteSong", track.uri);
-  if (result.ok) {
-    if (result.pendingPermission) {
-      state.pendingFileActions[track.uri] = { action: "delete" };
-      toast(result.manageStorageRequired ? "Dosya erişimi ekranı açıldı. İzni verip geri dön." : "Android silme onayı açıldı.");
+  try {
+    const track = findTrack(key);
+    if (!track?.uri) return toast("Bu parça için silme kullanılamıyor.");
+    const result = Native.call("deleteSong", track.uri);
+    if (result && result.ok) {
+      if (result.pendingPermission) {
+        state.pendingFileActions[track.uri] = { action: "delete" };
+        toast(result.manageStorageRequired ? "Dosya erişimi ekranı açıldı. İzni verip geri dön." : "Android silme onayı açıldı.");
+      } else {
+        removeTrackLocally(track);
+        updateFromNativePayload(result);
+        toast("Şarkı silindi.");
+        renderAll();
+      }
     } else {
-      removeTrackLocally(track);
-      updateFromNativePayload(result);
-      toast("Şarkı silindi.");
-      renderAll();
+      toast((result && result.error) || "Silinemedi.");
     }
-  } else {
-    toast(result.error || "Silinemedi.");
+  } catch (error) {
+    console.error("deleteTrack error:", error);
+    toast("Silme işlemi sırasında beklenmedik bir hata oluştu: " + error.message);
   }
 }
 
@@ -1614,6 +1716,19 @@ function handleNativeEvent(event) {
     return;
   }
 
+  if (event.type === "searchSuggestions" && event.callbackId === state.search.suggestionsCallbackId) {
+    state.search.suggestionsLoading = false;
+    if (event.ok) {
+      state.search.suggestions = Array.isArray(event.suggestions) ? event.suggestions : [];
+      state.search.suggestionsError = "";
+    } else {
+      state.search.suggestions = [];
+      state.search.suggestionsError = event.error || "Öneriler alınamadı.";
+    }
+    updateSearchBody();
+    return;
+  }
+
   if (event.type === "searchResults" && event.callbackId === state.search.callbackId) {
     clearTimeout(state.searchWatchdog);
     state.search.loading = false;
@@ -1633,7 +1748,7 @@ function handleNativeEvent(event) {
       if (event.ok) {
         state.preview.status = "ready";
         state.preview.track = Object.assign(state.preview.track, event.track || {});
-        toast("Önizleme başladı.");
+        // toast("Önizleme başladı.");
       } else {
         toast(event.error || "Önizleme başlatılamadı.");
         closePrev();
@@ -1675,7 +1790,6 @@ function handleNativeEvent(event) {
       track
     };
     if (event.status === "failed") {
-      state.activeDownloadKeys.delete(sourceKey);
       state.downloads = state.downloads.filter((dl) => dl.id !== item.id);
       saveJson("flowna_downloads", state.downloads);
       upsertFailed(item);
@@ -1684,7 +1798,6 @@ function handleNativeEvent(event) {
     }
     if (event.status === "failed") toast(item.error || "İndirme başarısız oldu.");
     if (event.status === "completed") {
-      state.activeDownloadKeys.delete(sourceKey);
       toast("İndirme tamamlandı.");
       refreshLibrary(false);
     }
@@ -1736,6 +1849,8 @@ window.startDownload = startDownload;
 window.setQuality = setQuality;
 window.toggleSetting = toggleSetting;
 window.checkUpdate = checkUpdate;
+window.applyLiveUpdate = applyLiveUpdate;
+window.resetLiveUpdate = resetLiveUpdate;
 window.checkYtDlpUpdate = checkYtDlpUpdate;
 window.clearCache = clearCache;
 window.openPreview = openPreview;

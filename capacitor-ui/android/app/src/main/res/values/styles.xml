@@ -12,16 +12,15 @@
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:windowBackground">#F7F4F0</item>
+        <item name="android:windowBackground">#0A0A14</item>
         <item name="android:colorAccent">#FF8A00</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#2E1608</item>
+        <item name="windowSplashScreenBackground">#0A0A14</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/flowna_launcher_logo</item>
-        <item name="windowSplashScreenAnimationDuration">1000</item>
+        <item name="windowSplashScreenAnimationDuration">1200</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
-        <item name="android:windowBackground">@drawable/splash</item>
     </style>
 </resources>

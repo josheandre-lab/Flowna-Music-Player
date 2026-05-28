@@ -15,12 +15,16 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.util.Base64;
 import android.view.KeyEvent;
+import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 import androidx.media.session.MediaButtonReceiver;
 import android.support.v4.media.MediaMetadataCompat;
@@ -47,11 +51,18 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        androidx.core.splashscreen.SplashScreen splashScreen =
+                androidx.core.splashscreen.SplashScreen.installSplashScreen(this);
+        long nativeSplashStartedAt = System.currentTimeMillis();
+        splashScreen.setKeepOnScreenCondition(
+                () -> System.currentTimeMillis() - nativeSplashStartedAt < 900
+        );
         super.onCreate(savedInstanceState);
         setupPlaybackSession();
         flownaBridge = new FlownaBridge(this);
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().addJavascriptInterface(flownaBridge, "FlownaNative");
+            setupSafeAreaInsets(getBridge().getWebView());
         }
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -64,6 +75,24 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         });
+    }
+
+    private void setupSafeAreaInsets(WebView webView) {
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
+            Insets navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            float density = Math.max(1f, getResources().getDisplayMetrics().density);
+            int bottomCssPx = Math.round(navigationBars.bottom / density);
+            applySafeBottom(webView, bottomCssPx);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(webView);
+    }
+
+    private void applySafeBottom(WebView webView, int bottomCssPx) {
+        String script = "document.documentElement.style.setProperty('--android-safe-bottom','"
+                + Math.max(0, bottomCssPx)
+                + "px');";
+        webView.post(() -> webView.evaluateJavascript(script, null));
     }
 
     private void setupPlaybackSession() {
