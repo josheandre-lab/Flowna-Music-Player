@@ -33,6 +33,7 @@ const state = {
   songs: [],
   downloadedSongs: [],
   search: { query: "", loading: false, results: [], error: "", callbackId: "", suggestions: [], suggestionsLoading: false, suggestionsError: "", suggestionsCallbackId: "" },
+  similar: { seedKey: "", query: "", loading: false, results: [], error: "", callbackId: "", fetchedAt: 0 },
   recent: loadJson("flowna_recent_searches", []),
   downloads: loadJson("flowna_downloads", []),
   failedDownloads: loadJson("flowna_failed_downloads", []),
@@ -149,6 +150,7 @@ function findTrack(key) {
   return state.registry.get(key)
     || state.songs.find((song) => keyOf(song) === key)
     || state.search.results.find((song) => keyOf(song) === key)
+    || state.similar.results.find((song) => keyOf(song) === key)
     || null;
 }
 
@@ -209,6 +211,7 @@ function patchTrackCover(matcher, cover) {
   state.songs = patchList(state.songs);
   state.downloadedSongs = patchList(state.downloadedSongs);
   state.search.results = patchList(state.search.results);
+  state.similar.results = patchList(state.similar.results);
   state.queue = patchList(state.queue);
   state.downloads = state.downloads.map((item) => (
     matcher(item.track) ? Object.assign({}, item, { track: Object.assign({}, item.track, { cover }) }) : item
@@ -312,6 +315,7 @@ function removeTrackLocally(track) {
   state.songs = state.songs.filter((item) => !sameTrack(item, track));
   state.downloadedSongs = state.downloadedSongs.filter((item) => !sameTrack(item, track));
   state.search.results = state.search.results.filter((item) => !sameTrack(item, track));
+  state.similar.results = state.similar.results.filter((item) => !sameTrack(item, track));
   state.queue = state.queue.filter((item) => !sameTrack(item, track));
   state.downloads = state.downloads.filter((item) => !sameTrack(item.track, track));
   state.failedDownloads = state.failedDownloads.filter((item) => !sameTrack(item.track, track));
@@ -1116,8 +1120,10 @@ function renderLibrary() {
 function renderRecommendations() {
   const recommended = recommendedSongs();
   const most = mostPlayedSongs();
+  requestSimilarSongs(false);
   return `<div class="stlbl">Senin için önerilenler</div>
     ${recommended.length ? `<div class="hs" style="margin-bottom:22px">${recommended.map(featureCard).join("")}</div>` : emptyBlock("Dinledikçe iyileşir", "Birkaç şarkı çaldığında öneriler gerçek dinleme alışkanlığına göre oluşacak.", "✦")}
+    ${renderSimilarSongs()}
     <div class="stlbl">En çok dinlenenler</div>
     ${most.length ? most.map((song, i) => songCard(song, i)).join("") : emptyBlock("Henüz dinleme kaydı yok", "Çaldığın şarkılar burada sıralanacak.", "♪")}`;
 }
@@ -1150,6 +1156,76 @@ function mostPlayedSongs() {
     .sort((a, b) => b.stat.count - a.stat.count || b.stat.lastPlayed - a.stat.lastPlayed)
     .map((item) => item.song)
     .slice(0, 8);
+}
+
+function similarSeedTrack() {
+  if (state.current) return state.current;
+  const recentStat = Object.values(state.playStats)
+    .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))[0];
+  if (recentStat) {
+    const fromLibrary = state.songs.find((song) => {
+      const titleMatch = String(song.title || "").toLowerCase() === String(recentStat.title || "").toLowerCase();
+      const artistMatch = String(song.artist || "").toLowerCase() === String(recentStat.artist || "").toLowerCase();
+      return titleMatch && artistMatch;
+    });
+    if (fromLibrary) return fromLibrary;
+    return { title: recentStat.title || "", artist: recentStat.artist || "" };
+  }
+  return state.songs[0] || null;
+}
+
+function similarQueryFor(track) {
+  const base = [track?.artist, track?.title].filter(Boolean).join(" ").trim();
+  return base ? `${base} similar songs` : "";
+}
+
+function requestSimilarSongs(force = false) {
+  if (!Native.available) return;
+  const seed = similarSeedTrack();
+  const query = similarQueryFor(seed);
+  const seedKey = keyOf(seed) || coverMetaKey(seed?.title, seed?.artist);
+  if (!query || !seedKey) return;
+  const fresh = state.similar.seedKey === seedKey
+    && state.similar.results.length
+    && Date.now() - state.similar.fetchedAt < 30 * 60 * 1000;
+  if (!force && (state.similar.loading || fresh)) return;
+
+  state.similar.seedKey = seedKey;
+  state.similar.query = query;
+  state.similar.loading = true;
+  state.similar.error = "";
+  state.similar.callbackId = "similar_" + Date.now();
+  const result = Native.call("search", query, state.similar.callbackId);
+  if (!result.ok) {
+    state.similar.loading = false;
+    state.similar.error = result.error || "Benzer şarkılar alınamadı.";
+  }
+}
+
+function renderSimilarSongs() {
+  const seed = similarSeedTrack();
+  const seedText = [seed?.artist, seed?.title].filter(Boolean).join(" - ");
+  const refresh = `<button class="sb" onclick="refreshSimilarSongs()" style="margin-left:auto">Yenile</button>`;
+  if (state.similar.loading && !state.similar.results.length) {
+    return `<div class="stlbl" style="display:flex;align-items:center;gap:10px">Benzer şarkılar ${refresh}</div>${loadingBlock("Benzer şarkılar aranıyor")}`;
+  }
+  if (state.similar.error && !state.similar.results.length) {
+    return `<div class="stlbl" style="display:flex;align-items:center;gap:10px">Benzer şarkılar ${refresh}</div>${emptyBlock("Benzer şarkılar alınamadı", state.similar.error, icon("search", 48))}`;
+  }
+  if (!state.similar.results.length) {
+    return `<div class="stlbl" style="display:flex;align-items:center;gap:10px">Benzer şarkılar ${refresh}</div>${emptyBlock("Dinledikçe önerir", "Bir şarkı çaldığında YouTube'dan benzer müzikler burada görünecek.", icon("search", 48))}`;
+  }
+  const subtitle = seedText ? `<div style="padding:0 24px 10px;font-size:12px;color:var(--t2)">Kaynak: ${esc(seedText)}</div>` : "";
+  return `<div class="stlbl" style="display:flex;align-items:center;gap:10px">Benzer şarkılar ${refresh}</div>
+    ${subtitle}
+    <div class="hs" style="margin-bottom:22px">${state.similar.results.slice(0, 8).map(featureCard).join("")}</div>`;
+}
+
+function refreshSimilarSongs() {
+  state.similar.results = [];
+  requestSimilarSongs(true);
+  renderLibrary();
+  toast("Benzer şarkılar yenileniyor.");
 }
 
 function setLibTab(tab) {
@@ -1729,6 +1805,23 @@ function handleNativeEvent(event) {
     return;
   }
 
+  if (event.type === "searchResults" && event.callbackId === state.similar.callbackId) {
+    state.similar.loading = false;
+    if (event.ok) {
+      const localKeys = new Set(state.songs.map(keyOf).filter(Boolean));
+      state.similar.results = normalizeSongs(event.results || [])
+        .filter((song) => !localKeys.has(keyOf(song)))
+        .slice(0, 8);
+      state.similar.error = "";
+      state.similar.fetchedAt = Date.now();
+    } else {
+      state.similar.results = [];
+      state.similar.error = event.error || "Benzer şarkılar alınamadı.";
+    }
+    if (state.screen === "library" && state.libTab === "all") renderLibrary();
+    return;
+  }
+
   if (event.type === "searchResults" && event.callbackId === state.search.callbackId) {
     clearTimeout(state.searchWatchdog);
     state.search.loading = false;
@@ -1851,6 +1944,7 @@ window.toggleSetting = toggleSetting;
 window.checkUpdate = checkUpdate;
 window.applyLiveUpdate = applyLiveUpdate;
 window.resetLiveUpdate = resetLiveUpdate;
+window.refreshSimilarSongs = refreshSimilarSongs;
 window.checkYtDlpUpdate = checkYtDlpUpdate;
 window.clearCache = clearCache;
 window.openPreview = openPreview;
