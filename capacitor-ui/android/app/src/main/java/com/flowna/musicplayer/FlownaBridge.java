@@ -2934,9 +2934,9 @@ final class FlownaBridge {
     private String versionName() {
         try {
             PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-            return info.versionName == null ? "1.0.25" : info.versionName;
+            return info.versionName == null ? "1.0.26" : info.versionName;
         } catch (Exception ignored) {
-            return "1.0.25";
+            return "1.0.26";
         }
     }
 
