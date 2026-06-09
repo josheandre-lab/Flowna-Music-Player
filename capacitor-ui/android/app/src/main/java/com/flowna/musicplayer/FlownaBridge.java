@@ -65,6 +65,7 @@ import java.util.zip.ZipInputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -85,7 +86,9 @@ final class FlownaBridge {
     private final MainActivity activity;
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService downloadIo = Executors.newSingleThreadExecutor();
+    private final ExecutorService searchIo = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService timers = Executors.newSingleThreadScheduledExecutor();
+    private final AtomicLong searchGeneration = new AtomicLong(0L);
     private final AtomicBoolean newPipeReady = new AtomicBoolean(false);
     private final AtomicBoolean ytDlpReady = new AtomicBoolean(false);
     private final AtomicBoolean ffmpegReady = new AtomicBoolean(false);
@@ -321,14 +324,17 @@ final class FlownaBridge {
 
     @JavascriptInterface
     public String search(String query, String callbackId) {
-        io.execute(() -> {
+        final long generation = searchGeneration.incrementAndGet();
+        searchIo.execute(() -> {
             JSONObject event = event("searchResults");
             put(event, "callbackId", callbackId);
             try {
                 JSONArray results = searchOnline(query);
+                if (generation != searchGeneration.get()) return;
                 put(event, "ok", true);
                 put(event, "results", results);
             } catch (Exception error) {
+                if (generation != searchGeneration.get()) return;
                 put(event, "ok", false);
                 put(event, "error", "Arama tamamlanamadı: " + friendly(error));
             }
@@ -2519,8 +2525,12 @@ final class FlownaBridge {
     private void sendEvent(JSONObject event) {
         String js = "window.FlownaNativeBridge&&window.FlownaNativeBridge.onNativeEvent(" + event + ");";
         activity.runOnUiThread(() -> {
-            if (activity.getBridge() != null && activity.getBridge().getWebView() != null) {
-                activity.getBridge().getWebView().evaluateJavascript(js, null);
+            try {
+                if (activity.getBridge() != null && activity.getBridge().getWebView() != null) {
+                    activity.getBridge().getWebView().evaluateJavascript(js, null);
+                }
+            } catch (Exception error) {
+                Log.w(TAG, "native event dispatch failed: " + friendly(error));
             }
         });
     }
@@ -2934,9 +2944,9 @@ final class FlownaBridge {
     private String versionName() {
         try {
             PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-            return info.versionName == null ? "1.0.26" : info.versionName;
+            return info.versionName == null ? "1.0.27" : info.versionName;
         } catch (Exception ignored) {
-            return "1.0.26";
+            return "1.0.27";
         }
     }
 

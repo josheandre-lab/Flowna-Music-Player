@@ -26,9 +26,9 @@ const state = {
   permissionGranted: false,
   notificationPermission: false,
   manageStoragePermission: false,
-  versionName: "1.0.26",
-  versionCode: 26,
-  webVersion: "1.0.26-bundled",
+  versionName: "1.0.27",
+  versionCode: 27,
+  webVersion: "1.0.27-bundled",
   liveUpdateActive: false,
   songs: [],
   downloadedSongs: [],
@@ -999,9 +999,9 @@ function onSearchInput(value) {
   state.search.error = "";
   clearTimeout(state.searchTimer);
   queueSearchSuggestions(value);
-  if (value.trim().length > 1) {
+  if (value.trim().length >= 3) {
     state.search.loading = true;
-    state.searchTimer = setTimeout(runSearch, 450);
+    state.searchTimer = setTimeout(runSearch, 850);
   } else {
     state.search.loading = false;
     state.search.results = [];
