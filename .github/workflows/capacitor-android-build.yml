@@ -1,0 +1,52 @@
+name: Capacitor Android Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/flowna-html-ui-redesign
+    paths:
+      - "capacitor-ui/**"
+      - ".github/workflows/capacitor-android-build.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: capacitor-ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: capacitor-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check web JavaScript
+        run: node --check www/app.js
+
+      - name: Sync Capacitor
+        run: npm run cap:sync
+
+      - name: Build release APK
+        working-directory: capacitor-ui/android
+        run: ./gradlew.bat assembleRelease
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowna-release-apk
+          path: capacitor-ui/android/app/build/outputs/apk/release/*.apk

@@ -317,6 +317,21 @@ body.ui-settled{background:#DEDAD5}
 .dr:last-child::after{display:none}
 .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .dok{background:var(--g)}.dwn{background:#F59E0B}
+.qrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--bdr)}
+.qrow:last-child{border-bottom:none}
+.qinfo{flex:1;min-width:0}
+.qt{font-size:13px;font-weight:800;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qa{font-size:11px;color:var(--t2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qbtn{width:32px;height:32px;border-radius:50%;border:none;background:var(--bg);color:var(--t2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.qbtn.danger{background:rgba(239,68,68,.08);color:#EF4444}
+.plcard{margin:0 24px 14px;background:var(--surface);border-radius:18px;padding:12px;box-shadow:var(--sh1)}
+.plcHead{display:flex;align-items:center;gap:10px;padding:2px 0 8px;border-bottom:1px solid var(--bdr);margin-bottom:4px}
+.eqbox{padding:12px 14px 16px}
+.eqbands{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}
+.eqband{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10px;color:var(--t2);font-weight:800}
+.eqband input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;width:26px;height:88px;accent-color:var(--p)}
+.eqrow{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:800;color:var(--t2);padding:7px 0}
+.eqrow span{width:42px}.eqrow input{flex:1;accent-color:var(--p)}
 /* FULL PLAYER */
 #player{position:absolute;inset:0;z-index:100;display:flex;flex-direction:column;
   transition:transform .42s var(--ease-sheet),opacity .34s var(--ease-smooth),border-radius .42s var(--ease-sheet);
@@ -360,6 +375,7 @@ body.ui-settled{background:#DEDAD5}
 .plact{flex:1;padding:10px;border-radius:14px;background:rgba(255,255,255,.08);
   display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;
   color:rgba(255,255,255,.52);cursor:pointer;transition:background .15s;border:none;font-family:inherit}
+.plact.on{background:rgba(255,107,74,.22);color:#fff}
 .plact:active{background:rgba(255,255,255,.16)}
 .plctrls{display:flex;align-items:center;justify-content:space-between}
 .cc{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;

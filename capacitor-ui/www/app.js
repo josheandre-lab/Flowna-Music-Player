@@ -26,9 +26,9 @@ const state = {
   permissionGranted: false,
   notificationPermission: false,
   manageStoragePermission: false,
-  versionName: "1.0.27",
-  versionCode: 27,
-  webVersion: "1.0.27-bundled",
+  versionName: "1.0.28",
+  versionCode: 28,
+  webVersion: "1.0.28-bundled",
   liveUpdateActive: false,
   songs: [],
   downloadedSongs: [],
@@ -51,10 +51,24 @@ const state = {
     autoUp: true,
     notifyDownloads: true
   }, loadJson("flowna_settings", {})),
+  playback: Object.assign({
+    shuffle: false,
+    repeat: "off"
+  }, loadJson("flowna_playback", {})),
+  equalizer: Object.assign({
+    enabled: false,
+    preset: "flat",
+    bass: 0,
+    loudness: 0,
+    bands: [0, 0, 0, 0, 0]
+  }, loadJson("flowna_equalizer", {})),
+  recentPlays: loadJson("flowna_recent_plays", []),
+  playlists: loadJson("flowna_playlists", []),
   libTab: "all",
   dlTab: "active",
   current: null,
-  queue: [],
+  queue: loadJson("flowna_queue", []),
+  manualQueue: loadJson("flowna_queue", []),
   playing: false,
   position: 0,
   duration: 0,
@@ -131,7 +145,15 @@ function icon(name, size = 20) {
     share: `<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4"/><path d="m8.6 13.5 6.8 4"/>`,
     edit: `<path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>`,
     trash: `<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/>`,
-    check: `<path d="m5 13 4 4L19 7"/>`
+    check: `<path d="m5 13 4 4L19 7"/>`,
+    shuffle: `<path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/>`,
+    repeat: `<path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>`,
+    repeatOne: `<path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/><path d="M11 10h1v5"/>`,
+    queue: `<path d="M4 6h12"/><path d="M4 12h10"/><path d="M4 18h8"/><path d="M17 14v6"/><path d="M14 17h6"/>`,
+    playlist: `<path d="M4 5h12"/><path d="M4 11h12"/><path d="M4 17h8"/><circle cx="18" cy="17" r="3"/>`,
+    equalizer: `<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M2 14h4"/><path d="M10 8h4"/><path d="M18 16h4"/>`,
+    history: `<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/>`,
+    up: `<path d="m18 15-6-6-6 6"/>`
   };
   return `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.play}</svg>`;
 }
@@ -427,6 +449,7 @@ function init() {
     state.permissionGranted = false;
   }
   saveSettings(false);
+  applyEqualizer(false);
   renderAll();
   startPlaybackPolling();
   setTimeout(() => document.body.classList.add("ui-settled"), 720);
@@ -610,6 +633,8 @@ function playTrack(key, options = {}) {
 }
 
 function currentVisibleQueue() {
+  const manual = state.manualQueue || [];
+  if (manual.length) return manual;
   if (state.screen === "library") {
     return state.libTab === "downloaded" ? state.songs.filter((song) => song.downloaded) : state.songs;
   }
@@ -626,6 +651,95 @@ function bumpPlayStat(track) {
   item.artist = track.artist;
   state.playStats[key] = item;
   saveJson("flowna_play_stats", state.playStats);
+  rememberRecentPlay(track);
+}
+
+function rememberRecentPlay(track) {
+  const key = keyOf(track);
+  if (!key) return;
+  const item = Object.assign({}, track, { playedAt: Date.now() });
+  state.recentPlays = [item, ...state.recentPlays.filter((song) => keyOf(song) !== key)].slice(0, 50);
+  saveJson("flowna_recent_plays", state.recentPlays);
+}
+
+function savePlayback() {
+  saveJson("flowna_playback", state.playback);
+}
+
+function saveQueue() {
+  saveJson("flowna_queue", state.manualQueue || []);
+}
+
+function toggleShuffle() {
+  state.playback.shuffle = !state.playback.shuffle;
+  savePlayback();
+  toast(state.playback.shuffle ? "Karıştır açık." : "Karıştır kapalı.");
+  renderMini();
+  if (!$("player").classList.contains("off")) renderPlayer();
+}
+
+function cycleRepeat() {
+  state.playback.repeat = state.playback.repeat === "off" ? "all" : state.playback.repeat === "all" ? "one" : "off";
+  savePlayback();
+  const label = state.playback.repeat === "one" ? "Tek şarkı tekrar" : state.playback.repeat === "all" ? "Tümü tekrar" : "Tekrar kapalı";
+  toast(label + ".");
+  renderMini();
+  if (!$("player").classList.contains("off")) renderPlayer();
+}
+
+function nextQueueIndex(currentIndex) {
+  if (!state.queue.length) return -1;
+  if (state.playback.repeat === "one") return currentIndex >= 0 ? currentIndex : 0;
+  if (state.playback.shuffle && state.queue.length > 1) {
+    let next = currentIndex;
+    for (let i = 0; i < 6 && next === currentIndex; i++) {
+      next = Math.floor(Math.random() * state.queue.length);
+    }
+    return next === currentIndex ? (currentIndex + 1) % state.queue.length : next;
+  }
+  if (currentIndex < state.queue.length - 1) return currentIndex + 1;
+  return state.playback.repeat === "all" ? 0 : -1;
+}
+
+function addToQueue(key) {
+  const track = findTrack(key);
+  if (!track) return;
+  const existing = state.queue.length ? state.queue : currentVisibleQueue();
+  const next = existing.filter((song) => keyOf(song) !== keyOf(track)).concat([track]);
+  state.queue = next;
+  state.manualQueue = next;
+  saveQueue();
+  toast("Sıraya eklendi.");
+  if (!$("player").classList.contains("off")) renderPlayer();
+}
+
+function removeFromQueue(index) {
+  state.queue = state.queue.filter((_, i) => i !== index);
+  state.manualQueue = state.queue.slice();
+  if (!state.queue.length) state.manualQueue = null;
+  saveQueue();
+  renderQueueSheet();
+  renderMini();
+}
+
+function moveQueue(index, direction) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= state.queue.length) return;
+  const next = state.queue.slice();
+  const [item] = next.splice(index, 1);
+  next.splice(nextIndex, 0, item);
+  state.queue = next;
+  state.manualQueue = next;
+  saveQueue();
+  renderQueueSheet();
+}
+
+function clearQueue() {
+  state.queue = state.current ? [state.current] : [];
+  state.manualQueue = null;
+  saveQueue();
+  toast("Sıra temizlendi.");
+  closeActionSheet();
 }
 
 function togglePlay() {
@@ -647,18 +761,25 @@ function nextSong(options = {}) {
   if (!state.current || !state.queue.length) return;
   const currentKey = keyOf(state.current);
   const index = state.queue.findIndex((song) => keyOf(song) === currentKey);
-  const next = state.queue[(index + 1 + state.queue.length) % state.queue.length];
+  const nextIndex = nextQueueIndex(index >= 0 ? index : 0);
+  if (nextIndex < 0) {
+    state.playing = false;
+    updatePlaybackChrome();
+    return;
+  }
+  const next = state.queue[nextIndex];
   playTrack(register(next), options);
 }
 
 function playNextAfterCompletion(completedTrack) {
   const completed = normalizeSongs([completedTrack || state.current])[0] || state.current;
-  if (!completed || completed.source === "online" || state.preview || state.queue.length < 2) return false;
+  if (!completed || completed.source === "online" || state.preview || !state.queue.length) return false;
   const completedKey = keyOf(completed);
   const currentIndex = state.queue.findIndex((song) => keyOf(song) === completedKey);
-  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % state.queue.length : 0;
+  const nextIndex = nextQueueIndex(currentIndex >= 0 ? currentIndex : 0);
+  if (nextIndex < 0) return false;
   const next = state.queue[nextIndex];
-  if (!next || keyOf(next) === completedKey) return false;
+  if (!next || (keyOf(next) === completedKey && state.playback.repeat !== "one")) return false;
   playTrack(register(next), { keepScreen: true, autoAdvance: true });
   return true;
 }
@@ -713,8 +834,9 @@ function renderPlayer() {
         <div class="pltime"><span>${fmt(state.position)}</span><span>${esc(track.duration || fmt(state.duration))}</span></div>
       </div>
       <div class="placts">
-        <button class="plact" onclick="toast('Sıraya eklendi')">${icon("plus", 16)} Sıraya Ekle</button>
-        <button class="plact" onclick="shareTrack('${register(track)}')">${icon("share", 16)} Paylaş</button>
+        <button class="plact ${state.playback.shuffle ? "on" : ""}" onclick="toggleShuffle()">${icon("shuffle", 16)} Karıştır</button>
+        <button class="plact ${state.playback.repeat !== "off" ? "on" : ""}" onclick="cycleRepeat()">${icon(state.playback.repeat === "one" ? "repeatOne" : "repeat", 16)} ${state.playback.repeat === "one" ? "Tekrar 1" : "Tekrar"}</button>
+        <button class="plact" onclick="showQueueSheet()">${icon("queue", 16)} Sıra</button>
       </div>
       <div class="plctrls">
         <button class="cc ccpn" onclick="prevSong()">${icon("prev", 24)}</button>
@@ -852,6 +974,8 @@ function renderActionSheet() {
       <div class="ashandle"></div>
       <div class="ashead">${imgD(track.cover, 48, 48, 12)}<div class="astxt"><div class="ast">${esc(track.title)}</div><div class="asa">${esc(track.artist)}</div></div></div>
       ${track.source === "online" ? `<button class="arow" onclick="openPreview('${sheet.key}');closeActionSheet()">${icon("play", 20)} Önizle</button><button class="arow" onclick="startDownload('${sheet.key}');closeActionSheet()">${icon("download", 20)} İndir</button>` : `<button class="arow" onclick="playTrack('${sheet.key}');closeActionSheet()">${icon("play", 20)} Çal</button>`}
+      <button class="arow" onclick="addToQueue('${sheet.key}');closeActionSheet()">${icon("queue", 20)} Sıraya Ekle</button>
+      <button class="arow" onclick="showAddToPlaylistSheet('${sheet.key}')">${icon("playlist", 20)} Playlist'e Ekle</button>
       ${canEdit ? `<button class="arow" onclick="showRenameSheet('${sheet.key}')">${icon("edit", 20)} Ad Değiştir</button><button class="arow danger" onclick="showDeleteSheet('${sheet.key}')">${icon("trash", 20)} Sil</button>` : ""}
       <button class="arow" onclick="shareTrack('${sheet.key}');closeActionSheet()">${icon("share", 20)} Paylaş</button>
     </div>`;
@@ -876,6 +1000,106 @@ function showRenameSheet(key) {
 function showDeleteSheet(key) {
   state.actionSheet = { mode: "delete", key };
   renderActionSheet();
+}
+
+function showQueueSheet() {
+  state.actionSheet = { mode: "queue" };
+  renderQueueSheet();
+  $("act").classList.remove("off");
+}
+
+function renderQueueSheet() {
+  const list = state.queue.length ? state.queue : (state.current ? [state.current] : []);
+  $("act").innerHTML = `<div class="asheet" onclick="event.stopPropagation()">
+    <div class="ashandle"></div>
+    <div class="ashead"><div class="srico">${icon("queue", 20)}</div><div class="astxt"><div class="ast">Çalma Sırası</div><div class="asa">${list.length} şarkı</div></div></div>
+    ${list.length ? list.map((song, index) => `<div class="qrow">
+      ${imgD(song.cover, 42, 42, 10)}
+      <div class="qinfo"><div class="qt">${esc(song.title)}</div><div class="qa">${esc(song.artist)}</div></div>
+      <button class="qbtn" onclick="moveQueue(${index},-1)">${icon("up", 16)}</button>
+      <button class="qbtn" onclick="moveQueue(${index},1)">${icon("down", 16)}</button>
+      <button class="qbtn danger" onclick="removeFromQueue(${index})">${icon("close", 16)}</button>
+    </div>`).join("") : emptyBlock("Sıra boş", "Bir şarkı çal veya menüden sıraya ekle.", icon("queue", 42))}
+    <div class="asplit"><button class="pdlbtn" style="background:var(--t3)" onclick="clearQueue()">Sırayı Temizle</button><button class="pdlbtn" onclick="closeActionSheet()">Tamam</button></div>
+  </div>`;
+}
+
+function savePlaylists() {
+  saveJson("flowna_playlists", state.playlists);
+}
+
+function createPlaylist(name) {
+  const title = String(name || "").trim();
+  if (!title) return null;
+  const playlist = { id: "pl_" + Date.now(), name: title, tracks: [], createdAt: Date.now() };
+  state.playlists = [playlist, ...state.playlists].slice(0, 40);
+  savePlaylists();
+  return playlist;
+}
+
+function createPlaylistPrompt() {
+  const name = window.prompt("Playlist adı");
+  const playlist = createPlaylist(name);
+  if (playlist) {
+    toast("Playlist oluşturuldu.");
+    renderLibrary();
+    if (state.actionSheet?.mode === "addPlaylist") renderAddToPlaylistSheet();
+  }
+}
+
+function showAddToPlaylistSheet(key) {
+  state.actionSheet = { mode: "addPlaylist", key };
+  renderAddToPlaylistSheet();
+}
+
+function renderAddToPlaylistSheet() {
+  const key = state.actionSheet?.key;
+  const track = findTrack(key);
+  if (!track) return closeActionSheet();
+  $("act").innerHTML = `<div class="asheet" onclick="event.stopPropagation()">
+    <div class="ashandle"></div>
+    <div class="ashead">${imgD(track.cover, 48, 48, 12)}<div class="astxt"><div class="ast">Playlist'e Ekle</div><div class="asa">${esc(track.title)}</div></div></div>
+    <button class="arow" onclick="createPlaylistPrompt()">${icon("plus", 20)} Yeni Playlist</button>
+    ${state.playlists.length ? state.playlists.map((playlist) => `<button class="arow" onclick="addTrackToPlaylist('${playlist.id}','${key}')">${icon("playlist", 20)} ${esc(playlist.name)} <span style="margin-left:auto;color:var(--t3);font-size:12px">${playlist.tracks.length}</span></button>`).join("") : `<div style="padding:12px 8px">${emptyBlock("Playlist yok", "Yeni playlist oluşturup şarkıları gruplayabilirsin.", icon("playlist", 42))}</div>`}
+    <button class="pclbtn" onclick="openSongActions('${key}')">Geri</button>
+  </div>`;
+}
+
+function addTrackToPlaylist(playlistId, key) {
+  const track = findTrack(key);
+  const playlist = state.playlists.find((item) => item.id === playlistId);
+  if (!track || !playlist) return;
+  playlist.tracks = [track, ...playlist.tracks.filter((song) => keyOf(song) !== keyOf(track))].slice(0, 300);
+  playlist.updatedAt = Date.now();
+  savePlaylists();
+  closeActionSheet();
+  toast("Playlist'e eklendi.");
+  renderLibrary();
+}
+
+function removeTrackFromPlaylist(playlistId, key) {
+  const playlist = state.playlists.find((item) => item.id === playlistId);
+  if (!playlist) return;
+  playlist.tracks = playlist.tracks.filter((song) => keyOf(song) !== key);
+  playlist.updatedAt = Date.now();
+  savePlaylists();
+  renderLibrary();
+}
+
+function deletePlaylist(playlistId) {
+  state.playlists = state.playlists.filter((item) => item.id !== playlistId);
+  savePlaylists();
+  toast("Playlist silindi.");
+  renderLibrary();
+}
+
+function playPlaylist(playlistId) {
+  const playlist = state.playlists.find((item) => item.id === playlistId);
+  if (!playlist?.tracks.length) return toast("Playlist boş.");
+  state.queue = normalizeSongs(playlist.tracks);
+  state.manualQueue = state.queue.slice();
+  saveQueue();
+  playTrack(register(state.queue[0]));
 }
 
 function confirmRename(key) {
@@ -1106,7 +1330,9 @@ function renderLibrary() {
     return;
   }
   const downloadedCount = state.songs.filter((song) => song.downloaded).length;
-  const list = state.libTab === "downloaded" ? state.songs.filter((song) => song.downloaded) : state.songs;
+  const list = state.libTab === "downloaded" ? state.songs.filter((song) => song.downloaded)
+    : state.libTab === "recent" ? normalizeSongs(state.recentPlays)
+      : state.songs;
   el.innerHTML = `<div class="shdr">
       <div class="stitle">Kütüphane</div>
       <div class="ssub">${state.songs.length} şarkı hazır</div>
@@ -1118,16 +1344,20 @@ function renderLibrary() {
           <div><div class="sv">${state.songs.length}</div><div class="sl">Tüm Şarkılar</div></div>
           <div><div class="sv">${downloadedCount}</div><div class="sl">İndirilenler</div></div>
           <div><div class="sv">${Object.keys(state.playStats).length}</div><div class="sl">Dinleme</div></div>
+          <div><div class="sv">${state.playlists.length}</div><div class="sl">Playlist</div></div>
         </div>
         <div class="su2">Son tarama: ${new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</div>
       </div>
       <div class="tabs">
         <button class="tbtn ${state.libTab === "all" ? "on" : ""}" onclick="setLibTab('all')">Tüm Şarkılar</button>
         <button class="tbtn ${state.libTab === "downloaded" ? "on" : ""}" onclick="setLibTab('downloaded')">İndirilenler</button>
+        <button class="tbtn ${state.libTab === "recent" ? "on" : ""}" onclick="setLibTab('recent')">Geçmiş</button>
+        <button class="tbtn ${state.libTab === "playlists" ? "on" : ""}" onclick="setLibTab('playlists')">Listeler</button>
       </div>
       ${state.libTab === "all" ? renderRecommendations() : ""}
+      ${state.libTab === "playlists" ? renderPlaylists() : ""}
       <div class="stlbl">Liste</div>
-      ${list.length ? list.map(songCard).join("") : emptyBlock("Bu bölüm boş", "Yeni indirdiğin müzikler burada görünecek.", icon("download", 48))}
+      ${state.libTab === "playlists" ? "" : list.length ? list.map(songCard).join("") : emptyBlock(state.libTab === "recent" ? "Geçmiş boş" : "Bu bölüm boş", state.libTab === "recent" ? "Çaldığın şarkılar burada görünecek." : "Yeni indirdiğin müzikler burada görünecek.", icon(state.libTab === "recent" ? "history" : "download", 48))}
     </div>`;
 }
 
@@ -1140,6 +1370,22 @@ function renderRecommendations() {
     ${renderSimilarSongs()}
     <div class="stlbl">En çok dinlenenler</div>
     ${most.length ? most.map((song, i) => songCard(song, i)).join("") : emptyBlock("Henüz dinleme kaydı yok", "Çaldığın şarkılar burada sıralanacak.", "♪")}`;
+}
+
+function renderPlaylists() {
+  const create = `<div style="padding:0 24px 14px"><button class="pdlbtn" onclick="createPlaylistPrompt()">${icon("plus", 18)} Yeni Playlist</button></div>`;
+  if (!state.playlists.length) {
+    return `${create}${emptyBlock("Playlist yok", "Kendi listelerini oluşturup şarkıları gruplayabilirsin.", icon("playlist", 48))}`;
+  }
+  return `${create}${state.playlists.map((playlist) => `<div class="plcard">
+    <div class="plcHead">
+      <div class="srico">${icon("playlist", 18)}</div>
+      <div class="qinfo"><div class="qt">${esc(playlist.name)}</div><div class="qa">${playlist.tracks.length} şarkı</div></div>
+      <button class="qbtn" onclick="playPlaylist('${playlist.id}')">${icon("play", 16)}</button>
+      <button class="qbtn danger" onclick="deletePlaylist('${playlist.id}')">${icon("trash", 16)}</button>
+    </div>
+    ${playlist.tracks.slice(0, 6).map((song) => `<div class="qrow">${imgD(song.cover, 38, 38, 10)}<div class="qinfo"><div class="qt">${esc(song.title)}</div><div class="qa">${esc(song.artist)}</div></div><button class="qbtn danger" onclick="removeTrackFromPlaylist('${playlist.id}','${esc(keyOf(song))}')">${icon("close", 15)}</button></div>`).join("")}
+  </div>`).join("")}`;
 }
 
 function featureCard(track) {
@@ -1367,6 +1613,7 @@ function renderSettings() {
         <div class="sr"><div class="srico" style="background:rgba(0,200,150,.1)">${icon("download", 17)}</div><div class="sri"><div class="srt">Arka Planda İndir</div><div class="srs">İndirmeleri uygulama açıkken yönetir</div></div>${sw("bgDl")}</div>
         <div class="sr"><div class="srico" style="background:rgba(79,70,229,.1)">${icon("plus", 17)}</div><div class="sri"><div class="srt">İndirme Bildirimi</div><div class="srs">Tamamlandığında bilgi göster</div></div>${sw("notifyDownloads")}</div>
       </div></div>
+      ${renderEqualizerSettings()}
       <div class="ss" style="margin-top:14px"><div class="ssl">Güncellemeler</div><div class="sg">
         <div class="sr"><div class="srico" style="background:rgba(79,70,229,.1)">${icon("settings", 17)}</div><div class="sri"><div class="srt">Otomatik Kontrol</div><div class="srs">Açılışta sürüm bilgisi kontrol edilir</div></div>${sw("autoUp")}</div>
         <div class="sr" onclick="checkYtDlpUpdate()"><div class="srico" style="background:rgba(0,200,150,.1)">${icon("download", 17)}</div><div class="sri"><div class="srt">yt-dlp’yi Güncelle</div><div class="srs">İndirme motorunu günceller</div></div><div class="srr">›</div></div>
@@ -1393,6 +1640,63 @@ function renderSettings() {
 
 function diagRow(title, subtitle, ok) {
   return `<div class="dr"><div class="dot ${ok ? "dok" : "dwn"}"></div><div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--t1)">${esc(title)}</div><div style="font-size:11px;color:var(--t2)">${esc(subtitle)}</div></div><div style="font-size:12px;color:${ok ? "var(--g)" : "#F59E0B"};font-weight:700">${ok ? "OK" : "Dikkat"}</div></div>`;
+}
+
+function renderEqualizerSettings() {
+  const presets = ["flat", "bass", "vocal", "bright"].map((preset) => {
+    const label = preset === "flat" ? "Düz" : preset === "bass" ? "Bass" : preset === "vocal" ? "Vokal" : "Parlak";
+    return `<button class="sb ${state.equalizer.preset === preset ? "on" : ""}" onclick="setEqualizerPreset('${preset}')">${label}</button>`;
+  }).join("");
+  const bands = state.equalizer.bands.map((value, index) => `<div class="eqband"><input type="range" min="-1200" max="1200" step="100" value="${Number(value || 0)}" oninput="setEqBand(${index},this.value)"><span>${["60","230","910","3K","14K"][index]}</span></div>`).join("");
+  return `<div class="ss" style="margin-top:14px"><div class="ssl">Equalizer</div><div class="sg">
+    <div class="sr"><div class="srico" style="background:rgba(138,92,255,.1)">${icon("equalizer", 17)}</div><div class="sri"><div class="srt">Ses Özelleştirme</div><div class="srs">${state.equalizer.enabled ? "Aktif" : "Kapalı"}</div></div><div class="tog ${state.equalizer.enabled ? "on" : ""}" onclick="toggleEqualizer()"><div class="togth"></div></div></div>
+    <div class="eqbox">
+      <div class="seg">${presets}</div>
+      <div class="eqbands">${bands}</div>
+      <div class="eqrow"><span>Bass</span><input type="range" min="0" max="1000" step="100" value="${Number(state.equalizer.bass || 0)}" oninput="setEqValue('bass',this.value)"></div>
+      <div class="eqrow"><span>Güç</span><input type="range" min="0" max="1200" step="100" value="${Number(state.equalizer.loudness || 0)}" oninput="setEqValue('loudness',this.value)"></div>
+    </div>
+  </div></div>`;
+}
+
+function applyEqualizer(show = false) {
+  saveJson("flowna_equalizer", state.equalizer);
+  const result = Native.call("setEqualizer", JSON.stringify(state.equalizer));
+  if (show) toast(result.ok ? "Equalizer güncellendi." : (result.error || "Equalizer bu cihazda kullanılamadı."));
+}
+
+function toggleEqualizer() {
+  state.equalizer.enabled = !state.equalizer.enabled;
+  applyEqualizer(true);
+  renderSettings();
+}
+
+function setEqualizerPreset(preset) {
+  const map = {
+    flat: [0, 0, 0, 0, 0],
+    bass: [700, 500, 100, -100, -200],
+    vocal: [-200, 100, 550, 350, 100],
+    bright: [-200, -100, 100, 450, 700]
+  };
+  state.equalizer.preset = preset;
+  state.equalizer.enabled = true;
+  state.equalizer.bands = (map[preset] || map.flat).slice();
+  state.equalizer.bass = preset === "bass" ? 700 : state.equalizer.bass;
+  applyEqualizer(true);
+  renderSettings();
+}
+
+function setEqBand(index, value) {
+  state.equalizer.enabled = true;
+  state.equalizer.preset = "custom";
+  state.equalizer.bands[index] = Number(value || 0);
+  applyEqualizer(false);
+}
+
+function setEqValue(key, value) {
+  state.equalizer.enabled = true;
+  state.equalizer[key] = Number(value || 0);
+  applyEqualizer(false);
 }
 
 function setQuality(q) {
@@ -1678,6 +1982,7 @@ function updatePlaybackChrome() {
 function startPlaybackPolling() {
   clearInterval(state.pollTimer);
   state.pollTimer = setInterval(() => {
+    if (document.hidden) return;
     if (!state.current) return;
     const playerVisible = !$("player").classList.contains("off");
     if (!state.playing && !playerVisible) return;
@@ -1687,7 +1992,7 @@ function startPlaybackPolling() {
     state.position = Number(result.position || 0);
     state.duration = Number(result.duration || state.duration || 0);
     updatePlaybackChrome();
-  }, 1200);
+  }, 1800);
 }
 
 function deleteTrack(key) {
@@ -1931,6 +2236,23 @@ window.playTrack = playTrack;
 window.togglePlay = togglePlay;
 window.nextSong = nextSong;
 window.prevSong = prevSong;
+window.toggleShuffle = toggleShuffle;
+window.cycleRepeat = cycleRepeat;
+window.addToQueue = addToQueue;
+window.showQueueSheet = showQueueSheet;
+window.moveQueue = moveQueue;
+window.removeFromQueue = removeFromQueue;
+window.clearQueue = clearQueue;
+window.createPlaylistPrompt = createPlaylistPrompt;
+window.showAddToPlaylistSheet = showAddToPlaylistSheet;
+window.addTrackToPlaylist = addTrackToPlaylist;
+window.removeTrackFromPlaylist = removeTrackFromPlaylist;
+window.deletePlaylist = deletePlaylist;
+window.playPlaylist = playPlaylist;
+window.toggleEqualizer = toggleEqualizer;
+window.setEqualizerPreset = setEqualizerPreset;
+window.setEqBand = setEqBand;
+window.setEqValue = setEqValue;
 window.seekPlayer = seekPlayer;
 window.seekRelative = seekRelative;
 window.closePlayer = closePlayer;

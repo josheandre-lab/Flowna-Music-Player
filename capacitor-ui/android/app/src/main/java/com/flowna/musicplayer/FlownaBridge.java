@@ -12,6 +12,9 @@ import android.database.Cursor;
 import android.media.MediaPlayer;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaScannerConnection;
+import android.media.audiofx.BassBoost;
+import android.media.audiofx.Equalizer;
+import android.media.audiofx.LoudnessEnhancer;
 import android.net.Uri;
 import android.content.Context;
 import android.net.wifi.WifiManager;
@@ -96,6 +99,10 @@ final class FlownaBridge {
     private final AtomicBoolean downloadRunning = new AtomicBoolean(false);
     private MediaPlayer player;
     private WifiManager.WifiLock wifiLock;
+    private Equalizer equalizer;
+    private BassBoost bassBoost;
+    private LoudnessEnhancer loudnessEnhancer;
+    private JSONObject equalizerSettings;
     private JSONObject currentTrack;
     private String pendingDeleteUri;
     private String pendingRenameUri;
@@ -256,6 +263,19 @@ final class FlownaBridge {
             if (player != null) player.seekTo(Math.max(0, millis));
         });
         return ok().toString();
+    }
+
+    @JavascriptInterface
+    public String setEqualizer(String settingsJson) {
+        try {
+            equalizerSettings = new JSONObject(settingsJson == null ? "{}" : settingsJson);
+            applyEqualizerSettings();
+            JSONObject out = ok();
+            put(out, "enabled", equalizerSettings.optBoolean("enabled", false));
+            return out.toString();
+        } catch (Exception error) {
+            return fail("Equalizer uygulanamadı: " + friendly(error)).toString();
+        }
     }
 
     @JavascriptInterface
@@ -1057,6 +1077,7 @@ final class FlownaBridge {
 
     private void attachPlayerListeners(JSONObject song) {
         player.setOnPreparedListener(mp -> {
+            applyEqualizerSettings();
             mp.start();
             sendPlaybackEvent("playing", song);
         });
@@ -1080,6 +1101,58 @@ final class FlownaBridge {
                 Log.w(TAG, "Failed to set wake mode: " + e.getMessage());
             }
         }
+    }
+
+    private void applyEqualizerSettings() {
+        if (player == null || equalizerSettings == null) return;
+        boolean enabled = equalizerSettings.optBoolean("enabled", false);
+        if (!enabled) {
+            releaseAudioEffects();
+            return;
+        }
+        try {
+            int sessionId = player.getAudioSessionId();
+            if (sessionId == 0) return;
+            if (equalizer == null) equalizer = new Equalizer(0, sessionId);
+            equalizer.setEnabled(true);
+            JSONArray bands = equalizerSettings.optJSONArray("bands");
+            short count = equalizer.getNumberOfBands();
+            short[] range = equalizer.getBandLevelRange();
+            for (short i = 0; i < count && i < 5; i++) {
+                int value = bands == null ? 0 : bands.optInt(i, 0);
+                short level = (short) Math.max(range[0], Math.min(range[1], value));
+                equalizer.setBandLevel(i, level);
+            }
+            if (bassBoost == null) bassBoost = new BassBoost(0, sessionId);
+            bassBoost.setStrength((short) Math.max(0, Math.min(1000, equalizerSettings.optInt("bass", 0))));
+            bassBoost.setEnabled(equalizerSettings.optInt("bass", 0) > 0);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                if (loudnessEnhancer == null) loudnessEnhancer = new LoudnessEnhancer(sessionId);
+                loudnessEnhancer.setTargetGain(Math.max(0, Math.min(1200, equalizerSettings.optInt("loudness", 0))));
+                loudnessEnhancer.setEnabled(equalizerSettings.optInt("loudness", 0) > 0);
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "equalizer apply failed: " + friendly(error), error);
+            releaseAudioEffects();
+        }
+    }
+
+    private void releaseAudioEffects() {
+        try {
+            if (equalizer != null) equalizer.release();
+        } catch (Exception ignored) {
+        }
+        try {
+            if (bassBoost != null) bassBoost.release();
+        } catch (Exception ignored) {
+        }
+        try {
+            if (loudnessEnhancer != null) loudnessEnhancer.release();
+        } catch (Exception ignored) {
+        }
+        equalizer = null;
+        bassBoost = null;
+        loudnessEnhancer = null;
     }
 
     private void acquireWifiLock() {
@@ -2944,9 +3017,9 @@ final class FlownaBridge {
     private String versionName() {
         try {
             PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-            return info.versionName == null ? "1.0.27" : info.versionName;
+            return info.versionName == null ? "1.0.28" : info.versionName;
         } catch (Exception ignored) {
-            return "1.0.27";
+            return "1.0.28";
         }
     }
 
