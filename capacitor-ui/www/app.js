@@ -429,11 +429,11 @@ function init() {
   saveSettings(false);
   renderAll();
   startPlaybackPolling();
-  setTimeout(() => document.body.classList.add("ui-settled"), 900);
+  setTimeout(() => document.body.classList.add("ui-settled"), 720);
   setTimeout(() => {
     $("splash")?.classList.add("off");
     setTimeout(() => Native.call("warmupDownloadEngine"), 450);
-  }, Math.max(3600 - (Date.now() - SPLASH_STARTED_AT), 0));
+  }, Math.max(1900 - (Date.now() - SPLASH_STARTED_AT), 0));
 }
 
 function renderAll() {
@@ -552,7 +552,7 @@ function renderMini() {
   const progress = state.duration ? Math.min(100, (state.position / state.duration) * 100) : 0;
   mini.style.display = "flex";
   mini.innerHTML = `<div class="mglow"></div>
-    <div class="mcover">${imgD(track.cover, 48, 48, 12)}</div>
+    <div class="mcover ${state.playing ? "playing" : ""}">${imgD(track.cover, 48, 48, 12)}</div>
     <div class="minfo"><div class="mtitle">${esc(track.title)}</div><div class="martist">${esc(track.artist)}</div></div>
     <div class="mctrls" onclick="event.stopPropagation()">
       <button class="mbtn mplay" onclick="togglePlay()">${state.playing ? icon("pause", 18) : icon("play", 18)}</button>
@@ -568,7 +568,9 @@ function songCard(track, index = 0, options = {}) {
   const menu = isOnline
     ? `<button class="cbtn cdl" onclick="startDownload('${key}')" title="İndir">${icon("download", 17)}</button>`
     : `<button class="cbtn cmore" onclick="openSongActions('${key}')" title="Menü">${icon("more", 19)}</button>`;
-  return `<div class="mc au" style="animation-delay:${(index * 0.035).toFixed(2)}s" onclick="${primary}">
+  const rowClass = index < 12 ? "rowfx" : "";
+  const rowDelay = `${(Math.min(index, 8) * 0.026).toFixed(3)}s`;
+  return `<div class="mc ${rowClass}" style="--row-delay:${rowDelay}" onclick="${primary}">
     <div class="mcimg">${imgD(track.cover, 56, 56, 12)}</div>
     <div class="mci">
       <div class="mct">${esc(track.title)}</div>
@@ -740,8 +742,20 @@ function closePlayer() {
   player.style.transition = "";
   player.style.transform = "";
   player.style.opacity = "";
+  player.classList.remove("from-mini");
   player.classList.add("off");
   state.playerDrag = null;
+}
+
+function openPlayer() {
+  if (!state.current) return;
+  const player = $("player");
+  renderPlayer();
+  player.classList.add("from-mini");
+  player.classList.remove("off");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => player.classList.remove("from-mini"));
+  });
 }
 
 function startPlayerDrag(event) {
@@ -1920,7 +1934,7 @@ window.prevSong = prevSong;
 window.seekPlayer = seekPlayer;
 window.seekRelative = seekRelative;
 window.closePlayer = closePlayer;
-window.openPlayer = () => { if (state.current) { renderPlayer(); $("player").classList.remove("off"); } };
+window.openPlayer = openPlayer;
 window.startPlayerDrag = startPlayerDrag;
 window.movePlayerDrag = movePlayerDrag;
 window.endPlayerDrag = endPlayerDrag;
